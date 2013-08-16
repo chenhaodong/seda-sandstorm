@@ -32,74 +32,80 @@ import java.io.IOException;
 import java.util.Date;
 
 /**
- * This class is used to start a Sandstorm system from the commandline.
- * The usage is:
+ * This class is used to start a Sandstorm system from the commandline. The
+ * usage is:
+ * 
  * <pre>
  *   java seda.sandStorm.main.Main &lt;configuration file&gt; [initargs]
  * </pre>
- *
- * A Sandstorm can be embedded within an application using the 
+ * 
+ * A Sandstorm can be embedded within an application using the
  * <tt>Sandstorm</tt> class.
- *
+ * 
  * @author Matt Welsh
  * @see Sandstorm
- *
+ * 
  */
 public class Main {
 
-  private static void usage() {
-    System.err.println("Usage:");
-    System.err.println("\tjava seda.sandStorm.main.Main [-profile] <configfile> [initargs]\n");
-    System.exit(-1);
-  }
-
-  public static void main(String args[]) {
-
-    try {
-
-      Date d = new Date();
-      if (args.length < 1) usage();
-
-      System.out.println(sandStormConst.WELCOME_STRING);
-      System.out.println("  Starting at "+d.toString()+"\n");
-
-      int n;
-      boolean PROFILE = false;
-
-      if ((args.length > 1) && (args[0].equals("-profile"))) {
-	PROFILE = true;
-	n = 1;
-      } else {
-	n = 0;
-      }
-
-      int numinitargs = args.length - n - 1;
-      String initargs[] = null;
-      if (numinitargs > 0) {
-	initargs = new String[numinitargs];
-	for (int j = 0; j < numinitargs; j++) {
-	  initargs[j] = args[n+1+j];
+	private static void usage() {
+		System.err.println("Usage:");
+		System.err
+				.println("\tjava seda.sandStorm.main.Main [-profile] <configfile> [initargs]\n");
+		System.exit(-1);
 	}
-      }
 
-      // -profile option overrides configuration file
-      SandstormConfig sscfg;
-      try {
-	sscfg = new SandstormConfig(args[n], initargs);
-      } catch (IOException fnfe) {
-	System.err.println("Error opening configuration file '"+args[n]+"': "+fnfe);
-	fnfe.printStackTrace();
-	usage();
-	return;
-      }
-      if (PROFILE) sscfg.putBoolean("global.profile.enable", true);
-      Sandstorm ss = new Sandstorm(sscfg);
+	public static void main(String args[]) {
 
-    } catch (Exception e) {
-      System.err.println("Sandstorm.main(): Got exception: "+e);
-      e.printStackTrace();
-    }
+		try {
 
-  }
+			Date d = new Date();
+			if (args.length < 1)
+				usage();
+
+			System.out.println(sandStormConst.WELCOME_STRING);
+			System.out.println("  Starting at " + d.toString() + "\n");
+
+			int n;
+			boolean PROFILE = false;
+
+			if ((args.length > 1) && (args[0].equals("-profile"))) {
+				PROFILE = true;
+				n = 1;
+			} else {
+				n = 0;
+			}
+
+			int numinitargs = args.length - n - 1;
+			String initargs[] = null;
+			if (numinitargs > 0) {
+				initargs = new String[numinitargs];
+				for (int j = 0; j < numinitargs; j++) {
+					initargs[j] = args[n + 1 + j];
+				}
+			}
+
+			// -profile option overrides configuration file
+			SandstormConfig sscfg;
+			try {
+				// !!!!sandstormconfig 会综合各个配置项，将最终完整配置
+				// !!!存放在成员变量中，同时stages非常重要，描述了之后运行需要加载的eventhandler。
+				sscfg = new SandstormConfig(args[n], initargs);
+			} catch (IOException fnfe) {
+				System.err.println("Error opening configuration file '"
+						+ args[n] + "': " + fnfe);
+				fnfe.printStackTrace();
+				usage();
+				return;
+			}
+			if (PROFILE)
+				sscfg.putBoolean("global.profile.enable", true);
+			Sandstorm ss = new Sandstorm(sscfg);
+
+		} catch (Exception e) {
+			System.err.println("Sandstorm.main(): Got exception: " + e);
+			e.printStackTrace();
+		}
+
+	}
 }
-

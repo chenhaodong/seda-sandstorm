@@ -34,13 +34,12 @@ import java.io.*;
 import java.util.*;
 
 /**
- * This class provides management functionality for the Sandstorm 
- * runtime system. It is responsible for initializing the system,
- * creating and registering stages and thread managers, and other
- * administrative functions. Stages and thread managers can interact
- * with this class through the ManagerIF and SystemManagerIF interfaces;
- * this class should not be used directly.
- *
+ * This class provides management functionality for the Sandstorm runtime
+ * system. It is responsible for initializing the system, creating and
+ * registering stages and thread managers, and other administrative functions.
+ * Stages and thread managers can interact with this class through the ManagerIF
+ * and SystemManagerIF interfaces; this class should not be used directly.
+ * 
  * @author Matt Welsh
  * @see seda.sandStorm.api.ManagerIF
  * @see seda.sandStorm.api.internal.SystemManagerIF
@@ -48,261 +47,276 @@ import java.util.*;
  */
 public class sandStormMgr implements ManagerIF, SystemManagerIF, sandStormConst {
 
-  private ThreadManagerIF defaulttm;
-  private Hashtable tmtbl;
+	private ThreadManagerIF defaulttm;
+	private Hashtable tmtbl;
 
-  private SandstormConfig mgrconfig;
-  private Hashtable stagetbl;
-  private Vector stagestoinit;
-  private boolean started = false;
-  private sandStormProfiler profiler;
-  private SignalMgr signalMgr;
+	/**
+	 * sandstormconfig 初始化好的配置类，内含所有要用的配置参数。
+	 */
+	private SandstormConfig mgrconfig;
+	private Hashtable stagetbl;
+	private Vector stagestoinit;
+	private boolean started = false;
+	private sandStormProfiler profiler;
+	private SignalMgr signalMgr;
 
-  /**
-   * Create a sandStormMgr which reads its configuration from the 
-   * given file.
-   */
-  public sandStormMgr(SandstormConfig mgrconfig) throws Exception {
-    this.mgrconfig = mgrconfig;
+	/**
+	 * Create a sandStormMgr which reads its configuration from the given file.
+	 */
+	public sandStormMgr(SandstormConfig mgrconfig) throws Exception {
+		this.mgrconfig = mgrconfig;
 
-    stagetbl = new Hashtable();
-    tmtbl = new Hashtable();
-    stagestoinit = new Vector();
-    signalMgr = new SignalMgr();
+		stagetbl = new Hashtable();
+		tmtbl = new Hashtable();
+		stagestoinit = new Vector();
+		signalMgr = new SignalMgr();
 
-    String dtm = mgrconfig.getString("global.defaultThreadManager");
-    if (dtm == null) {
-      throw new IllegalArgumentException("No threadmanager specified by configuration");
-    }
+		String dtm = mgrconfig.getString("global.defaultThreadManager");
+		if (dtm == null) {
+			throw new IllegalArgumentException(
+					"No threadmanager specified by configuration");
+		}
+		// 工厂
+		if (dtm.equals(SandstormConfig.THREADMGR_TPPTM)) {
+			throw new Error("TPPThreadManager is no longer supported.");
+			/* defaulttm = new TPPThreadManager(mgrconfig); */
+		} else if (dtm.equals(SandstormConfig.THREADMGR_TPSTM)) {
+			defaulttm = new TPSThreadManager(this);
+		} else if (dtm.equals(SandstormConfig.THREADMGR_AggTPSTM)) {
+			throw new Error("AggTPSThreadManager is no longer supported.");
+			/* defaulttm = new AggTPSThreadManager(mgrconfig); */
+		} else {
+			throw new IllegalArgumentException(
+					"Bad threadmanager specified by configuration: " + dtm);
+		}
+		// ！！！what tbl stands for？
+		tmtbl.put("default", defaulttm);
 
-    if (dtm.equals(SandstormConfig.THREADMGR_TPPTM)) {
-      throw new Error("TPPThreadManager is no longer supported.");
-      /* defaulttm = new TPPThreadManager(mgrconfig); */
-    } else if (dtm.equals(SandstormConfig.THREADMGR_TPSTM)) {
-      defaulttm = new TPSThreadManager(this);
-    } else if (dtm.equals(SandstormConfig.THREADMGR_AggTPSTM)) {
-      throw new Error("AggTPSThreadManager is no longer supported.");
-      /* defaulttm = new AggTPSThreadManager(mgrconfig); */
-    } else {
-      throw new IllegalArgumentException("Bad threadmanager specified by configuration: "+dtm);
-    }
+		initialize_io();
+		loadInitialStages();
+	}
 
-    tmtbl.put("default", defaulttm);
+	/**
+	 * Start the manager.
+	 */
+	public void start() {
+		started = true;
+		System.err.println("Sandstorm: Initializing stages");
+		initStages();
 
-    initialize_io();
-    loadInitialStages();
-  }
+		// Let the threads start
+		try {
+			System.err
+					.println("Sandstorm: Waiting for all components to start...");
+			Thread.currentThread().sleep(500);
+		} catch (InterruptedException ie) {
+			// Ignore
+		}
 
-  /**
-   * Start the manager.
-   */
-  public void start() {
-    started = true;
-    System.err.println("Sandstorm: Initializing stages");
-    initStages();
+		System.err.println("\nSandstorm: Ready.\n");
+	}
 
-    // Let the threads start
-    try {
-      System.err.println("Sandstorm: Waiting for all components to start...");
-      Thread.currentThread().sleep(500);
-    } catch (InterruptedException ie) {
-      // Ignore
-    }
+	/**
+	 * Stop the manager.
+	 */
+	public void stop() {
+		Enumeration e = tmtbl.keys();
+		while (e.hasMoreElements()) {
+			String name = (String) e.nextElement();
+			ThreadManagerIF tm = (ThreadManagerIF) tmtbl.get(name);
+			System.err.println("Sandstorm: Stopping ThreadManager " + name);
+			tm.deregisterAll();
+		}
 
-    System.err.println("\nSandstorm: Ready.\n");
-  }
+		System.err.println("Sandstorm: Shutting down stages");
+		destroyStages();
+		started = false;
+	}
 
-  /**
-   * Stop the manager.
-   */
-  public void stop() {
-    Enumeration e = tmtbl.keys();
-    while (e.hasMoreElements()) {
-      String name = (String)e.nextElement();
-      ThreadManagerIF tm = (ThreadManagerIF)tmtbl.get(name);
-      System.err.println("Sandstorm: Stopping ThreadManager "+name);
-      tm.deregisterAll();
-    }
+	/**
+	 * Return a handle to given stage.
+	 */
+	public StageIF getStage(String stagename) throws NoSuchStageException {
+		if (stagename == null)
+			throw new NoSuchStageException("no such stage: null");
+		StageWrapperIF wrapper = (StageWrapperIF) stagetbl.get(stagename);
+		if (wrapper == null)
+			throw new NoSuchStageException("no such stage: " + stagename);
+		return wrapper.getStage();
+	}
 
-    System.err.println("Sandstorm: Shutting down stages");
-    destroyStages();
-    started = false;
-  }
+	// Initialize the I/O layer
+	private void initialize_io() throws Exception {
 
-  /**
-   * Return a handle to given stage.
-   */
-  public StageIF getStage(String stagename) throws NoSuchStageException {
-    if (stagename == null) throw new NoSuchStageException("no such stage: null");
-    StageWrapperIF wrapper = (StageWrapperIF)stagetbl.get(stagename);
-    if (wrapper == null) throw new NoSuchStageException("no such stage: "+stagename);
-    return wrapper.getStage();
-  }
+		// Create profiler even if disabled
+		profiler = new sandStormProfiler(this);
 
-  // Initialize the I/O layer
-  private void initialize_io() throws Exception {
+		if (mgrconfig.getBoolean("global.profile.enable")) {
+			System.err.println("Sandstorm: Starting profiler");
+			profiler.start();
+		}
 
-    // Create profiler even if disabled
-    profiler = new sandStormProfiler(this);
+		if (mgrconfig.getBoolean("global.aSocket.enable")) {
+			System.err.println("Sandstorm: Starting aSocket layer");
+			aSocketMgr.initialize(this, this);
+		}
 
-    if (mgrconfig.getBoolean("global.profile.enable")) {
-      System.err.println("Sandstorm: Starting profiler");
-      profiler.start();
-    }
+		if (mgrconfig.getBoolean("global.aDisk.enable")) {
+			System.err.println("Sandstorm: Starting aDisk layer");
+			AFileMgr.initialize(this, this);
+		}
+	}
 
-    if (mgrconfig.getBoolean("global.aSocket.enable")) {
-      System.err.println("Sandstorm: Starting aSocket layer");
-      aSocketMgr.initialize(this, this);
-    } 
+	// Load stages as specified in the SandstormConfig.
+	private void loadInitialStages() throws Exception {
+		Enumeration e = mgrconfig.getStages();
+		if (e == null)
+			return;
+		while (e.hasMoreElements()) {
+			stageDescr descr = (stageDescr) e.nextElement();
+			loadStage(descr);
+		}
+	}
 
-    if (mgrconfig.getBoolean("global.aDisk.enable")) {
-      System.err.println("Sandstorm: Starting aDisk layer");
-      AFileMgr.initialize(this, this);
-    }
-  }
+	/**
+	 * Return the default thread manager.
+	 */
+	public ThreadManagerIF getThreadManager() {
+		return defaulttm;
+	}
 
-  // Load stages as specified in the SandstormConfig.
-  private void loadInitialStages() throws Exception {
-    Enumeration e = mgrconfig.getStages();
-    if (e == null) return;
-    while (e.hasMoreElements()) {
-      stageDescr descr = (stageDescr)e.nextElement();
-      loadStage(descr);
-    }
-  }
+	/**
+	 * Return the thread manager with the given name.
+	 */
+	public ThreadManagerIF getThreadManager(String name) {
+		return (ThreadManagerIF) tmtbl.get(name);
+	}
 
-  /**
-   * Return the default thread manager.
-   */
-  public ThreadManagerIF getThreadManager() {
-    return defaulttm;
-  }
+	/**
+	 * Add a thread manager with the given name.
+	 */
+	public void addThreadManager(String name, ThreadManagerIF tm) {
+		tmtbl.put(name, tm);
+	}
 
-  /**
-   * Return the thread manager with the given name.
-   */
-  public ThreadManagerIF getThreadManager(String name) {
-    return (ThreadManagerIF)tmtbl.get(name);
-  }
+	// Load a stage from the given classname with the given config.
+	private void loadStage(stageDescr descr) throws Exception {
+		String stagename = descr.stageName;
+		String classname = descr.className;
+		ConfigData config = new ConfigData(this, descr.initargs);
+		Class theclass = Class.forName(classname);
+		EventHandlerIF evHandler = (EventHandlerIF) theclass.newInstance();
+		System.out.println("Sandstorm: Loaded " + stagename + " from "
+				+ classname);
 
-  /**
-   * Add a thread manager with the given name.
-   */
-  public void addThreadManager(String name, ThreadManagerIF tm) {
-    tmtbl.put(name, tm);
-  }
+		StageWrapper wrapper = new StageWrapper((ManagerIF) this, stagename,
+				evHandler, config, defaulttm, descr.queueThreshold);
 
-  // Load a stage from the given classname with the given config.
-  private void loadStage(stageDescr descr) throws Exception {
-    String stagename = descr.stageName;
-    String classname = descr.className;
-    ConfigData config = new ConfigData(this, descr.initargs);
-    Class theclass = Class.forName(classname);
-    EventHandlerIF evHandler = (EventHandlerIF)theclass.newInstance();
-    System.out.println("Sandstorm: Loaded "+stagename+" from "+classname);
+		createStage(wrapper, false);
+	}
 
-    StageWrapper wrapper = new StageWrapper((ManagerIF)this, stagename, evHandler, config, 
-	defaulttm, descr.queueThreshold);
+	/**
+	 * Create a stage with the given name from the given event handler with the
+	 * given initial arguments.
+	 */
+	public StageIF createStage(String stageName, EventHandlerIF evHandler,
+			String initargs[]) throws Exception {
+		ConfigDataIF config = new ConfigData(this, initargs);
+		if (stagetbl.get(stageName) != null) {
+			// Come up with a better (random) name
+			stageName = stageName + "-" + stagetbl.size();
+		}
+		StageWrapperIF wrapper = new StageWrapper((ManagerIF) this, stageName,
+				evHandler, config, defaulttm);
 
-    createStage(wrapper, false);
-  }
+		return createStage(wrapper, true);
+	}
 
-  /**
-   * Create a stage with the given name from the given event handler with
-   * the given initial arguments.
-   */
-  public StageIF createStage(String stageName, EventHandlerIF evHandler, 
-      String initargs[]) throws Exception {
-    ConfigDataIF config = new ConfigData(this, initargs);
-    if (stagetbl.get(stageName) != null) {
-      // Come up with a better (random) name
-      stageName = stageName+"-"+stagetbl.size();
-    }
-    StageWrapperIF wrapper = new StageWrapper((ManagerIF)this, stageName, evHandler, 
-	config, defaulttm);
+	/**
+	 * Create a stage from the given stage wrapper. If 'initialize' is true,
+	 * initialize this stage immediately.
+	 */
+	public StageIF createStage(StageWrapperIF wrapper, boolean initialize)
+			throws Exception {
+		String name = wrapper.getStage().getName();
+		if (stagetbl.get(name) != null) {
+			throw new StageNameAlreadyBoundException("Stage name " + name
+					+ " already in use");
+		}
+		stagetbl.put(name, wrapper);
 
-    return createStage(wrapper, true);
-  }
+		if (mgrconfig.getBoolean("global.profile.enable")) {
+			profiler.add(wrapper.getStage().getName() + " queueLength",
+					(ProfilableIF) wrapper.getStage().getSink());
+		}
 
-  /**
-   * Create a stage from the given stage wrapper. 
-   * If 'initialize' is true, initialize this stage immediately.
-   */
-  public StageIF createStage(StageWrapperIF wrapper, boolean initialize) throws Exception {
-    String name = wrapper.getStage().getName();
-    if (stagetbl.get(name) != null) {
-      throw new StageNameAlreadyBoundException("Stage name "+name+" already in use");
-    }
-    stagetbl.put(name, wrapper);
+		if (initialize) {
+			wrapper.init();
+		} else {
+			stagestoinit.addElement(wrapper);
+		}
+		return wrapper.getStage();
+	}
 
-    if (mgrconfig.getBoolean("global.profile.enable")) {
-      profiler.add(wrapper.getStage().getName()+" queueLength",
-	  (ProfilableIF)wrapper.getStage().getSink());
-    }
+	/**
+	 * Return the system profiler.
+	 */
+	public ProfilerIF getProfiler() {
+		return profiler;
+	}
 
-    if (initialize) {
-      wrapper.init();
-    } else {
-      stagestoinit.addElement(wrapper);
-    }
-    return wrapper.getStage();
-  } 
+	/**
+	 * Return the system signal manager.
+	 */
+	public SignalMgrIF getSignalMgr() {
+		return signalMgr;
+	}
 
-  /**
-   * Return the system profiler.
-   */
-  public ProfilerIF getProfiler() {
-    return profiler;
-  }
+	/**
+	 * Return the SandstormConfig used to initialize this manager. Actually
+	 * returns a copy of the SandstormConfig; this prevents options from being
+	 * changed once the system has been initialized.
+	 */
+	public SandstormConfig getConfig() {
+		return mgrconfig.getCopy();
+	}
 
-  /**
-   * Return the system signal manager.
-   */
-  public SignalMgrIF getSignalMgr() {
-    return signalMgr;
-  }
+	// Initialize all stages
+	private void initStages() {
 
-  /**
-   * Return the SandstormConfig used to initialize this manager.
-   * Actually returns a copy of the SandstormConfig; this prevents
-   * options from being changed once the system has been initialized.
-   */
-  public SandstormConfig getConfig() {
-    return mgrconfig.getCopy();
-  }
+		for (int i = 0; i < stagestoinit.size(); i++) {
+			StageWrapperIF wrapper = (StageWrapperIF) stagestoinit.elementAt(i);
+			try {
+				System.err.println("-- Initializing <"
+						+ wrapper.getStage().getName() + ">");
+				wrapper.init();
+			} catch (Exception ex) {
+				System.err
+						.println("Sandstorm: Caught exception initializing stage "
+								+ wrapper.getStage().getName() + ": " + ex);
+				ex.printStackTrace();
+				System.err.println("Sandstorm: Exiting.");
+				System.exit(-1);
+			}
+		}
 
-  // Initialize all stages
-  private void initStages() {
+		signalMgr.trigger(new StagesInitializedSignal());
+	}
 
-    for (int i = 0; i < stagestoinit.size(); i++) {
-      StageWrapperIF wrapper = (StageWrapperIF)stagestoinit.elementAt(i);
-      try {
-	System.err.println("-- Initializing <"+wrapper.getStage().getName()+">");
-	wrapper.init();
-      } catch (Exception ex) {
-	System.err.println("Sandstorm: Caught exception initializing stage "+wrapper.getStage().getName()+": "+ex);
-	ex.printStackTrace();
-	System.err.println("Sandstorm: Exiting.");
-	System.exit(-1);
-      }
-    }
-
-    signalMgr.trigger(new StagesInitializedSignal());
-  }
-
-  // Destroy all stages
-  private void destroyStages() {
-    Enumeration e = stagetbl.elements();
-    while (e.hasMoreElements()) {
-      StageWrapperIF wrapper = (StageWrapperIF)e.nextElement();
-      try {
-	wrapper.destroy();
-      } catch (Exception ex) {
-	System.err.println("Sandstorm: Caught exception destroying stage "+wrapper.getStage().getName()+": "+ex);
-	ex.printStackTrace();
-      }
-    }
-  }
+	// Destroy all stages
+	private void destroyStages() {
+		Enumeration e = stagetbl.elements();
+		while (e.hasMoreElements()) {
+			StageWrapperIF wrapper = (StageWrapperIF) e.nextElement();
+			try {
+				wrapper.destroy();
+			} catch (Exception ex) {
+				System.err
+						.println("Sandstorm: Caught exception destroying stage "
+								+ wrapper.getStage().getName() + ": " + ex);
+				ex.printStackTrace();
+			}
+		}
+	}
 
 }
-
