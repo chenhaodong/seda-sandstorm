@@ -33,6 +33,7 @@ import java.util.*;
 
 /**
  * Internal event handler used to process socket read events.
+ * 无状态的，因为handler会在多线程中穿梭。
  */
 class ReadEventHandler extends aSocketEventHandler implements EventHandlerIF {
 

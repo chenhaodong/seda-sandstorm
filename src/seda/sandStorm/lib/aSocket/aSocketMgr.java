@@ -35,166 +35,177 @@ import java.io.*;
 import java.util.*;
 
 /**
- * The aSocketMgr is an internal class used to provide an interface between
- * the Sandstorm runtime and the aSocket library. Applications should not
- * make use of this class.
- *
+ * The aSocketMgr is an internal class used to provide an interface between the
+ * Sandstorm runtime and the aSocket library. Applications should not make use
+ * of this class.
+ * 
  * @author Matt Welsh
  */
 public class aSocketMgr {
 
-  private static final boolean DEBUG = false;
+	private static final boolean DEBUG = false;
 
-  private static ThreadManagerIF aSocketTM, aSocketRCTM;
-  private static SinkIF read_sink;
-  private static SinkIF listen_sink;
-  private static SinkIF write_sink;
+	/**
+	 * aSocketTM和aSocketRCTM是由global.aSocket.governor.enable决定的
+	 * 两个变量都在initialize方法中赋值。
+	 */
+	private static ThreadManagerIF aSocketTM, aSocketRCTM;
+	/**
+	 * readstage的sink（队列）
+	 */
+	private static SinkIF read_sink;
+	private static SinkIF listen_sink;
+	private static SinkIF write_sink;
 
-  private static Object init_lock = new Object();
-  private static boolean initialized = false;
+	/**
+	 * 用作synchronized
+	 */
+	private static Object init_lock = new Object();
+	/**
+	 * 当initialize结束后赋值为true
+	 */
+	private static boolean initialized = false;
 
-  static boolean USE_NIO = false;
-  private static aSocketImplFactory factory;
+	static boolean USE_NIO = false;
+	/**
+	 * 根据USE_NIO返回对应工厂类，创建的是***state类
+	 */
+	//STEPIN state对象是干嘛的。
+	private static aSocketImplFactory factory;
 
-  /**
-   * Called at startup time by the Sandstorm runtime.
-   */
-  public static void initialize(ManagerIF mgr, SystemManagerIF sysmgr) throws Exception {
+	/**
+	 * Called at startup time by the Sandstorm runtime.
+	 * 注意是静态方法，设置类静态变量
+	 */
+	public static void initialize(ManagerIF mgr, SystemManagerIF sysmgr) throws Exception {
+		//!!!!Remove this after analysis.
+		//!!!!请将下一行移除。
+		synchronized (init_lock) {
+			SandstormConfig cfg = mgr.getConfig();
 
-    synchronized (init_lock) {
-      SandstormConfig cfg = mgr.getConfig();
+			String provider = cfg.getString("global.aSocket.provider");
+			if (provider == null) {
+				throw new RuntimeException("aSocketMgr: Must specify either " + "'NIO' or 'NBIO' for global.aSocket.provider");
+			}
+			//!!!!目前global.aSocket.provider只支持NIO和NBIO两个选项，分别是干嘛的？
+			if (provider.equals("NIO")) {
+				USE_NIO = true;
+				System.err.println("aSocket layer using JDK1.4 java.nio package");
+			} else if (provider.equals("NBIO")) {
+				USE_NIO = false;
+				System.err.println("aSocket layer using NBIO package");
+			} else {
+				throw new RuntimeException("aSocketMgr: Must specify either " + "'NIO' or 'NBIO' for global.aSocket.provider");
+			}
 
-      String provider = cfg.getString("global.aSocket.provider");
-      if (provider == null) {
-          throw new RuntimeException("aSocketMgr: Must specify either " +
-                "'NIO' or 'NBIO' for global.aSocket.provider");
-      }
+			try {
+				//!!!!simple factory pattern.
+				//!!!!返回一个工厂类，根据是否使用NBIO
+				factory = aSocketImplFactory.getFactory();
+			} catch (Exception e) {
+				throw new RuntimeException("aSocketMgr: Cannot create aSocketImplFactory: " + e);
+			}
 
-      if (provider.equals("NIO")) {
-          USE_NIO = true;
-	  System.err.println("aSocket layer using JDK1.4 java.nio package");
-      } else if (provider.equals("NBIO")) {
-          USE_NIO = false;
-	  System.err.println("aSocket layer using NBIO package");
-      } else {
-          throw new RuntimeException("aSocketMgr: Must specify either " +
-                "'NIO' or 'NBIO' for global.aSocket.provider");
-      }
+			aSocketTM = new aSocketThreadManager(mgr);
+			//将SocketTM加入sandstormMgr中的defaulttm表中。aSocketTM是干嘛的？TM是干嘛的？
+			sysmgr.addThreadManager("aSocket", aSocketTM);
+			//创建ReadStageWrapper
+			ReadEventHandler revh = new ReadEventHandler();
+			aSocketStageWrapper rsw;
+			if (cfg.getBoolean("global.aSocket.governor.enable")) {
+				aSocketRCTM = new aSocketRCTMSleep(mgr);
+				sysmgr.addThreadManager("aSocketRCTM", aSocketRCTM);
+				//!!!!此调用是关键，初始化一个StageWrapper，怎么用?
+				//STEPIN 还不知道怎么用wrapper
+				rsw = new aSocketStageWrapper("aSocket ReadStage", revh, new ConfigData(mgr), aSocketRCTM);
+			} else {
+				rsw = new aSocketStageWrapper("aSocket ReadStage", revh, new ConfigData(mgr), aSocketTM);
+			}
+			//!!!!将rsw wrapper注册到sysmgr，此处是sandStormMgr中，并返回wrapper中的stage。wrapper中的stage是在上一行new的时候创造的。
+			StageIF readStage = sysmgr.createStage(rsw, true);
+			//STEPIN 跟踪getSink，sink和EventQueue的不同
+			//STEPIN 为什么要记录sink，AFileMgr就没有
+			read_sink = readStage.getSink();
+			//创建ListenStageWrapper
+			ListenEventHandler levh = new ListenEventHandler();
+			aSocketStageWrapper lsw = new aSocketStageWrapper("aSocket ListenStage", levh, new ConfigData(mgr), aSocketTM);
+			StageIF listenStage = sysmgr.createStage(lsw, true);
+			listen_sink = listenStage.getSink();
+			//创建WriteEventHandler
+			WriteEventHandler wevh = new WriteEventHandler();
+			aSocketStageWrapper wsw = new aSocketStageWrapper("aSocket WriteStage", wevh, new ConfigData(mgr), aSocketTM);
+			StageIF writeStage = sysmgr.createStage(wsw, true);
+			write_sink = writeStage.getSink();
+			//涉及到sandstormmgr的有stagewrapper都被注册到stagetbl成员变量中。TM注册到tmtbl
+			//另外TM和SW都有mgr引用
+			initialized = true;
+		}
+	}
 
-      try {
-	factory = aSocketImplFactory.getFactory();
-      } catch (Exception e) {
-	throw new RuntimeException("aSocketMgr: Cannot create aSocketImplFactory: "+e);
-      }
+	/**
+	 * Ensure that the aSocket layer is initialized, in case the library is
+	 * being used in standalone mode.
+	 */
+	static void init() {
+		synchronized (init_lock) {
+			// When invoked in standalone mode
+			if (!initialized) {
+				try {
+					Sandstorm ss = Sandstorm.getSandstorm();
+					if (ss != null) {
+						initialize(ss.getManager(), ss.getSystemManager());
+					} else {
+						SandstormConfig cfg = new SandstormConfig();
+						ss = new Sandstorm(cfg);
+					}
+				} catch (Exception e) {
+					System.err.println("aSocketMgr: Warning: Initialization failed: " + e);
+					e.printStackTrace();
+					return;
+				}
+			}
+		}
+	}
 
-      aSocketTM = new aSocketThreadManager(mgr);
-      sysmgr.addThreadManager("aSocket", aSocketTM);
+	static aSocketImplFactory getFactory() {
+		return factory;
+	}
 
-      ReadEventHandler revh = new ReadEventHandler();
-      aSocketStageWrapper rsw;
-      if (cfg.getBoolean("global.aSocket.governor.enable")) {
-	aSocketRCTM = new aSocketRCTMSleep(mgr);
-	sysmgr.addThreadManager("aSocketRCTM", aSocketRCTM);
-	rsw = new aSocketStageWrapper("aSocket ReadStage", 
-  	    revh, new ConfigData(mgr), aSocketRCTM);
-      } else {
-	rsw = new aSocketStageWrapper("aSocket ReadStage", 
-	    revh, new ConfigData(mgr), aSocketTM);
-      }
+	static public void enqueueRequest(aSocketRequest req) {
+		init();
 
-      StageIF readStage = sysmgr.createStage(rsw, true);
-      read_sink = readStage.getSink();
+		if ((req instanceof ATcpWriteRequest) || (req instanceof ATcpConnectRequest) || (req instanceof ATcpFlushRequest) || (req instanceof ATcpCloseRequest)
+				|| (req instanceof AUdpWriteRequest) || (req instanceof AUdpCloseRequest) || (req instanceof AUdpFlushRequest) || (req instanceof AUdpConnectRequest)
+				|| (req instanceof AUdpDisconnectRequest)) {
 
-      ListenEventHandler levh = new ListenEventHandler();
-      aSocketStageWrapper lsw = new aSocketStageWrapper("aSocket ListenStage", 
-	  levh, new ConfigData(mgr), aSocketTM);
-      StageIF listenStage = sysmgr.createStage(lsw, true);
-      listen_sink = listenStage.getSink();
+			try {
+				write_sink.enqueue(req);
+			} catch (SinkException se) {
+				System.err.println("aSocketMgr.enqueueRequest: Warning: Got SinkException " + se);
+				System.err.println("aSocketMgr.enqueueRequest: This is a bug - contact <mdw@cs.berkeley.edu>");
+			}
 
-      WriteEventHandler wevh = new WriteEventHandler();
-      aSocketStageWrapper wsw = new aSocketStageWrapper("aSocket WriteStage", 
-	  wevh, new ConfigData(mgr), aSocketTM);
-      StageIF writeStage = sysmgr.createStage(wsw, true);
-      write_sink = writeStage.getSink();
+		} else if ((req instanceof ATcpStartReadRequest) || (req instanceof AUdpStartReadRequest)) {
 
-      initialized = true;
-    }
-  }
+			try {
+				read_sink.enqueue(req);
+			} catch (SinkException se) {
+				System.err.println("aSocketMgr.enqueueRequest: Warning: Got SinkException " + se);
+				System.err.println("aSocketMgr.enqueueRequest: This is a bug - contact <mdw@cs.berkeley.edu>");
+			}
 
-  /** 
-   * Ensure that the aSocket layer is initialized, in case the library
-   * is being used in standalone mode.
-   */
-  static void init() {
-    synchronized (init_lock) {
-      // When invoked in standalone mode
-      if (!initialized) {
-       	try {
-	  Sandstorm ss = Sandstorm.getSandstorm();
-	  if (ss != null) {
-	    initialize(ss.getManager(), ss.getSystemManager());
-	  } else {
-	    SandstormConfig cfg = new SandstormConfig();
-	    ss = new Sandstorm(cfg);
-	  }
-   	} catch (Exception e) {
-  	  System.err.println("aSocketMgr: Warning: Initialization failed: "+e);
-  	  e.printStackTrace();
-  	  return;
-   	}
-      }
-    }
-  }
+		} else if ((req instanceof ATcpListenRequest) || (req instanceof ATcpSuspendAcceptRequest) || (req instanceof ATcpResumeAcceptRequest)
+				|| (req instanceof ATcpCloseServerRequest)) {
 
-  static aSocketImplFactory getFactory() {
-    return factory;
-  }
+			try {
+				listen_sink.enqueue(req);
+			} catch (SinkException se) {
+				System.err.println("aSocketMgr.enqueueRequest: Warning: Got SinkException " + se);
+				System.err.println("aSocketMgr.enqueueRequest: This is a bug - contact <mdw@cs.berkeley.edu>");
+			}
 
-  static public void enqueueRequest(aSocketRequest req) {
-    init();
-
-    if ((req instanceof ATcpWriteRequest) ||
-	(req instanceof ATcpConnectRequest) ||
-	(req instanceof ATcpFlushRequest) ||
-	(req instanceof ATcpCloseRequest) ||
-	(req instanceof AUdpWriteRequest) ||
-	(req instanceof AUdpCloseRequest) ||
-	(req instanceof AUdpFlushRequest) ||
-	(req instanceof AUdpConnectRequest) ||
-	(req instanceof AUdpDisconnectRequest)) {
-
-      try {
-	write_sink.enqueue(req);
-      } catch (SinkException se) {
-	System.err.println("aSocketMgr.enqueueRequest: Warning: Got SinkException "+se);
-	System.err.println("aSocketMgr.enqueueRequest: This is a bug - contact <mdw@cs.berkeley.edu>");
-      }
-
-    } else if ((req instanceof ATcpStartReadRequest) ||
-               (req instanceof AUdpStartReadRequest)) {
-
-      try {
-	read_sink.enqueue(req);
-      } catch (SinkException se) {
-	System.err.println("aSocketMgr.enqueueRequest: Warning: Got SinkException "+se);
-	System.err.println("aSocketMgr.enqueueRequest: This is a bug - contact <mdw@cs.berkeley.edu>");
-      }
-
-    } else if ((req instanceof ATcpListenRequest) ||
-	(req instanceof ATcpSuspendAcceptRequest) ||
-	(req instanceof ATcpResumeAcceptRequest) ||
-	(req instanceof ATcpCloseServerRequest)) {
-
-      try {
-	listen_sink.enqueue(req);
-      } catch (SinkException se) {
-	System.err.println("aSocketMgr.enqueueRequest: Warning: Got SinkException "+se);
-	System.err.println("aSocketMgr.enqueueRequest: This is a bug - contact <mdw@cs.berkeley.edu>");
-      }
-
-    } else {
-      throw new IllegalArgumentException("Bad request type "+req);
-    }
-  }
+		} else {
+			throw new IllegalArgumentException("Bad request type " + req);
+		}
+	}
 }
-

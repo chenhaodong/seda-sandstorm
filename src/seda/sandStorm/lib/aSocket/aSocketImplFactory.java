@@ -23,34 +23,40 @@
  */
 
 package seda.sandStorm.lib.aSocket;
+
 import java.io.*;
 import java.net.*;
 
 /**
- * aSocketImplFactory is an internal abstract class used to represent
- * the interface between the aSocket library and a provider implementation.
- *
+ * aSocketImplFactory is an internal abstract class used to represent the
+ * interface between the aSocket library and a provider implementation.
+ * 
  * @author Matt Welsh
  */
 public abstract class aSocketImplFactory {
-  private static final boolean DEBUG = false;
+	private static final boolean DEBUG = false;
 
-  static aSocketImplFactory getFactory() throws ClassNotFoundException, InstantiationException, IllegalAccessException {
-    aSocketImplFactory factory;
+	static aSocketImplFactory getFactory() throws ClassNotFoundException, InstantiationException, IllegalAccessException {
+		aSocketImplFactory factory;
 
-    if (aSocketMgr.USE_NIO) {
-      factory = (aSocketImplFactory)Class.forName("seda.sandStorm.lib.aSocket.nio.NIOFactory").newInstance();
-    } else {
-      factory = (aSocketImplFactory)Class.forName("seda.sandStorm.lib.aSocket.nbio.NBIOFactory").newInstance();
-    }
-    return factory;
-  }
+		if (aSocketMgr.USE_NIO) {
+			factory = (aSocketImplFactory) Class.forName("seda.sandStorm.lib.aSocket.nio.NIOFactory").newInstance();
+		} else {
+			factory = (aSocketImplFactory) Class.forName("seda.sandStorm.lib.aSocket.nbio.NBIOFactory").newInstance();
+		}
+		return factory;
+	}
 
-  protected abstract SelectSourceIF newSelectSource();
-  protected abstract SelectQueueElement newSelectQueueElement(Object item);
-  protected abstract SockState newSockState(ATcpConnection conn, Socket nbsock, int writeClogThreshold) throws IOException;
-  protected abstract ConnectSockState newConnectSockState(ATcpConnectRequest req, SelectSourceIF selsource) throws IOException;
-  protected abstract ListenSockState newListenSockState(ATcpListenRequest req, SelectSourceIF selsource) throws IOException;
-  protected abstract DatagramSockState newDatagramSockState(AUdpSocket sock, InetAddress addr, int port) throws IOException;
+	protected abstract SelectSourceIF newSelectSource();
+
+	protected abstract SelectQueueElement newSelectQueueElement(Object item);
+
+	protected abstract SockState newSockState(ATcpConnection conn, Socket nbsock, int writeClogThreshold) throws IOException;
+
+	protected abstract ConnectSockState newConnectSockState(ATcpConnectRequest req, SelectSourceIF selsource) throws IOException;
+
+	protected abstract ListenSockState newListenSockState(ATcpListenRequest req, SelectSourceIF selsource) throws IOException;
+
+	protected abstract DatagramSockState newDatagramSockState(AUdpSocket sock, InetAddress addr, int port) throws IOException;
 
 }

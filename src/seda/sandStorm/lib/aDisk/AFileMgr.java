@@ -31,95 +31,100 @@ import seda.sandStorm.internal.*;
 import seda.sandStorm.main.*;
 
 /**
- * The AFileMgr is an internal class used to provide an interface between
- * the Sandstorm runtime and the aDisk library. Applications should not
- * make use of this class.
- *
+ * The AFileMgr is an internal class used to provide an interface between the
+ * Sandstorm runtime and the aDisk library. Applications should not make use of
+ * this class.
+ * 
  * @author Matt Welsh
  */
 public class AFileMgr {
 
-  private static final boolean DEBUG = false;
+	private static final boolean DEBUG = false;
+	//STEPIN 为什么没有sink
+	static final int THREADPOOL_IMPL = 0;
+	private static int IMPL_TO_USE;
 
-  static final int THREADPOOL_IMPL = 0;
-  private static int IMPL_TO_USE;
+	private static ThreadManagerIF aFileTM;
+	private static boolean initialized = false;
+	private static Object init_lock = new Object();
 
-  private static ThreadManagerIF aFileTM;
-  private static boolean initialized = false;
-  private static Object init_lock = new Object();
-
-  static {
-    // Eventually test for JAIO 
-    IMPL_TO_USE = THREADPOOL_IMPL;
-  }
-
-  /**
-   * Called at startup time by the Sandstorm runtime.
-   */
-  public static void initialize(ManagerIF mgr, SystemManagerIF sysmgr) throws Exception {
-    synchronized (init_lock) {
-      switch (IMPL_TO_USE) {
-	case THREADPOOL_IMPL:
-	  // XXX Could replace with a TPSThreadManager - but need to augment 
-	  // TPSTM to start with an initial number of threads per stage
-	  //
-	  // We also want the threads to poll across the event queues
-	  // for each file (going to sleep if none of the event queues have
-	  // events) which is closer to the TPPTM behavior. I think it's easier 
-	  // to do this with a separate thread manager rather than bastardizing
-	  // an existing one.
-	  aFileTM = new AFileTPTM(mgr, sysmgr);
-	  break;
-	default:
-	  throw new LinkageError("Error: AFileMgr has bad value for IMPL_TO_USE; this is a bug - please contact <mdw@cs.berkeley.edu>");
-      }
-      initialized = true;
-    }
-  }
-
-  /**
-   * Called when initialized in standalone mode.
-   */
-  static synchronized void initialize() {
-    synchronized(init_lock) {
-      if (initialized) return;
-      Sandstorm ss = Sandstorm.getSandstorm();
-      if (ss != null) {
-	// There is a Sandstorm running, but we weren't initialized 
-	// at startup time
-	try {
-	  initialize(ss.getManager(), ss.getSystemManager());
-	} catch (Exception e) {
-	  System.err.println("Warning: AFileMgr.initialize() got exception: "+e);
+	static {
+		// Eventually test for JAIO
+		IMPL_TO_USE = THREADPOOL_IMPL;
 	}
-      } else {
-	// No Sandstorm running yet, so create one
-	try {
-	  SandstormConfig cfg = new SandstormConfig();
-	  cfg.putBoolean("global.profile.enable", false);
-	  ss = new Sandstorm(cfg);
-	} catch (Exception e) {
-	  System.err.println("AFileMgr: Warning: Initialization failed: "+e);
-	  e.printStackTrace();
-	  return;
+
+	/**
+	 * Called at startup time by the Sandstorm runtime.
+	 */
+	public static void initialize(ManagerIF mgr, SystemManagerIF sysmgr) throws Exception {
+		synchronized (init_lock) {
+			switch (IMPL_TO_USE) {
+			case THREADPOOL_IMPL:
+				// XXX Could replace with a TPSThreadManager - but need to
+				// augment
+				// TPSTM to start with an initial number of threads per stage
+				//
+				// We also want the threads to poll across the event queues
+				// for each file (going to sleep if none of the event queues
+				// have
+				// events) which is closer to the TPPTM behavior. I think it's
+				// easier
+				// to do this with a separate thread manager rather than
+				// bastardizing
+				// an existing one.
+				// stagewrapper等创建都在AFileTPTM里完成。
+				aFileTM = new AFileTPTM(mgr, sysmgr);
+				break;
+			default:
+				throw new LinkageError("Error: AFileMgr has bad value for IMPL_TO_USE; this is a bug - please contact <mdw@cs.berkeley.edu>");
+			}
+			initialized = true;
+		}
 	}
-      }
-    }
-  }
 
-  /**
-   * Return the code for the implementation being used.
-   */
-  static int getImpl() {
-    return IMPL_TO_USE;
-  }
+	/**
+	 * Called when initialized in standalone mode.
+	 */
+	static synchronized void initialize() {
+		synchronized (init_lock) {
+			if (initialized)
+				return;
+			Sandstorm ss = Sandstorm.getSandstorm();
+			if (ss != null) {
+				// There is a Sandstorm running, but we weren't initialized
+				// at startup time
+				try {
+					initialize(ss.getManager(), ss.getSystemManager());
+				} catch (Exception e) {
+					System.err.println("Warning: AFileMgr.initialize() got exception: " + e);
+				}
+			} else {
+				// No Sandstorm running yet, so create one
+				try {
+					SandstormConfig cfg = new SandstormConfig();
+					cfg.putBoolean("global.profile.enable", false);
+					ss = new Sandstorm(cfg);
+				} catch (Exception e) {
+					System.err.println("AFileMgr: Warning: Initialization failed: " + e);
+					e.printStackTrace();
+					return;
+				}
+			}
+		}
+	}
 
-  /**
-   * Return the ThreadManagerIF corresponding to the chosen implementation.
-   */
-  static ThreadManagerIF getTM() {
-    return aFileTM;
-  }
+	/**
+	 * Return the code for the implementation being used.
+	 */
+	static int getImpl() {
+		return IMPL_TO_USE;
+	}
+
+	/**
+	 * Return the ThreadManagerIF corresponding to the chosen implementation.
+	 */
+	static ThreadManagerIF getTM() {
+		return aFileTM;
+	}
 
 }
-

@@ -47,14 +47,36 @@ import java.util.*;
  */
 public class sandStormMgr implements ManagerIF, SystemManagerIF, sandStormConst {
 
+	/**
+	 * new TPSThreadManager(this);
+	 */
 	private ThreadManagerIF defaulttm;
+	/**
+	 * 存放ThreadManager
+	 * TPSTM
+	 * aSocketThreadManager
+	 * aSocketRCTMSleep
+	 * AFileTPTM
+	 */
 	private Hashtable tmtbl;
 
 	/**
 	 * sandstormconfig 初始化好的配置类，内含所有要用的配置参数。
 	 */
 	private SandstormConfig mgrconfig;
+	/**
+	 * 存放StageWrapper，以stage名作关键码
+	 * rsw
+	 * lsw
+	 * wsw
+	 * AFileTPStageWrapper
+	 * 以及配置文件中配置的其他STAGE。
+	 * 只有SocketSW和FileSW是配置文件中默认就有的，enable就可以了。
+	 */
 	private Hashtable stagetbl;
+	/**
+	 * 存放还没有初始化的stagewrapper
+	 */
 	private Vector stagestoinit;
 	private boolean started = false;
 	private sandStormProfiler profiler;
@@ -233,6 +255,7 @@ public class sandStormMgr implements ManagerIF, SystemManagerIF, sandStormConst 
 	}
 
 	/**
+	 * 调用wrapper.getStage() 获取stage对象，此方法主要是完成在mgr中的注册。
 	 * Create a stage from the given stage wrapper. If 'initialize' is true,
 	 * initialize this stage immediately.
 	 */

@@ -35,106 +35,125 @@ import java.util.*;
  */
 class aSocketStageWrapper implements StageWrapperIF {
 
-  private String name;
-  private StageIF stage;
-  private EventHandlerIF handler;
-  private ConfigDataIF config;
-  private FiniteQueue eventQ;
-  private SelectSourceIF selsource;
-  private ThreadManagerIF tm;
-  private StageStatsIF stats;
+	private String name;
+	/**
+	 * 自己创建
+	 */
+	private StageIF stage;
+	/**
+	 * 传入
+	 */
+	private EventHandlerIF handler;
+	/**
+	 * 传入
+	 */
+	private ConfigDataIF config;
+	/**
+	 * 自己创建
+	 */
+	private FiniteQueue eventQ;
+	/**
+	 * 自己创建
+	 */
+	private SelectSourceIF selsource;
+	/**
+	 * 传入
+	 */
+	private ThreadManagerIF tm;
+	private StageStatsIF stats;
 
-  aSocketStageWrapper(String name, EventHandlerIF handler, ConfigDataIF config, ThreadManagerIF tm) {
-    this.name = name;
-    this.handler = handler;
-    this.config = config;
-    this.tm = tm;
-    this.stats = new StageStats(this);
+	aSocketStageWrapper(String name, EventHandlerIF handler, ConfigDataIF config, ThreadManagerIF tm) {
+		this.name = name;
+		this.handler = handler;
+		this.config = config;
+		this.tm = tm;
+		this.stats = new StageStats(this);
+		// !!!!最大队列长度
+		int queuelen;
+		if ((queuelen = config.getInt("_queuelength")) <= 0) {
+			queuelen = -1;
+		}
+		if (queuelen == -1) {
+			eventQ = new FiniteQueue();
+		} else {
+			eventQ = new FiniteQueue();
+			// !!!!添加阈值判断
+			QueueThresholdPredicate pred = new QueueThresholdPredicate(eventQ, queuelen);
+			eventQ.setEnqueuePredicate(pred);
+		}
+		this.selsource = ((aSocketEventHandler) handler).getSelectSource();
+		this.stage = new Stage(name, this, (SinkIF) eventQ, config);
+		this.config.setStage(this.stage);
+	}
 
-    int queuelen;
-    if ((queuelen = config.getInt("_queuelength")) <= 0) {
-      queuelen = -1;
-    }
-    if (queuelen == -1) {
-      eventQ = new FiniteQueue();
-    } else {
-      eventQ = new FiniteQueue();
-      QueueThresholdPredicate pred = new QueueThresholdPredicate(eventQ, queuelen);
-      eventQ.setEnqueuePredicate(pred);
-    }
-    this.selsource = ((aSocketEventHandler)handler).getSelectSource();
-    this.stage = new Stage(name, this, (SinkIF)eventQ, config);
-    this.config.setStage(this.stage);
-  }
+	/**
+	 * Initialize this stage.
+	 */
+	public void init() throws Exception {
+		//!!!!啥也不干 ReadEventHandler
+		handler.init(config);
+		//!!!!开始创建线程池，并启动
+		tm.register(this);
+	}
 
-  /**
-   * Initialize this stage.
-   */
-  public void init() throws Exception {
-    handler.init(config);
-    tm.register(this);
-  }
+	/**
+	 * Destroy this stage.
+	 */
+	public void destroy() throws Exception {
+		tm.deregister(this);
+		handler.destroy();
+	}
 
-  /**
-   * Destroy this stage.
-   */
-  public void destroy() throws Exception {
-    tm.deregister(this);
-    handler.destroy();
-  }
+	/**
+	 * Return the event handler associated with this stage.
+	 */
+	public EventHandlerIF getEventHandler() {
+		return handler;
+	}
 
-  /**
-   * Return the event handler associated with this stage.
-   */
-  public EventHandlerIF getEventHandler() {
-    return handler;
-  }
+	/**
+	 * Return the stage handle for this stage.
+	 */
+	public StageIF getStage() {
+		return stage;
+	}
 
-  /**
-   * Return the stage handle for this stage.
-   */
-  public StageIF getStage() {
-    return stage;
-  }
+	/**
+	 * Return the source from which events should be pulled to pass to this
+	 * EventHandlerIF. <b>Note</b> that this method is not used internally.
+	 */
+	public SourceIF getSource() {
+		return eventQ;
+	}
 
-  /**
-   * Return the source from which events should be pulled to 
-   * pass to this EventHandlerIF. <b>Note</b> that this method is not
-   * used internally.
-   */
-  public SourceIF getSource() {
-    return eventQ;
-  }
+	/**
+	 * Return the thread manager for this stage.
+	 */
+	public ThreadManagerIF getThreadManager() {
+		return tm;
+	}
 
-  /**
-   * Return the thread manager for this stage.
-   */
-  public ThreadManagerIF getThreadManager() {
-    return tm;
-  }
+	// So aSocketTM can access it
+	SelectSourceIF getSelectSource() {
+		return selsource;
+	}
 
-  // So aSocketTM can access it
-  SelectSourceIF getSelectSource() {
-    return selsource;
-  }
+	// So aSocketTM can access it
+	SourceIF getEventQueue() {
+		return eventQ;
+	}
 
-  // So aSocketTM can access it
-  SourceIF getEventQueue() {
-    return eventQ;
-  }
+	public StageStatsIF getStats() {
+		return stats;
+	}
 
-  public StageStatsIF getStats() {
-    return stats;
-  }
+	/** Not implemented. */
+	public ResponseTimeControllerIF getResponseTimeController() {
+		return null;
+	}
 
-  /** Not implemented. */
-  public ResponseTimeControllerIF getResponseTimeController() {
-    return null;
-  }
-
-  public String toString() {
-    return "ASOCKETSW["+stage.getName()+"]";
-  }
+	public String toString() {
+		return "ASOCKETSW[" + stage.getName() + "]";
+	}
 
 }
-
