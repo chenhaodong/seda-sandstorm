@@ -31,76 +31,72 @@ import seda.sandStorm.main.*;
 import java.util.*;
 
 /**
- * A Stage is a basic implementation of StageIF for application-level
- * stages.
+ * A Stage is a basic implementation of StageIF for application-level stages.
  * 
- * @author   Matt Welsh
+ * @author Matt Welsh
  */
 public class Stage implements StageIF {
 
-  private String name;
-  private StageWrapperIF wrapper;
-  private SinkIF mainsink;
+	private String name;
+	private StageWrapperIF wrapper;
+	private SinkIF mainsink;
 
-  // If true, instantate a SinkProxy for the stage's event queue 
-  // when batchControllor or rtController are enabled. This should
-  // be obsolete; older implementations of these controllers relied
-  // on the proxy, but it's no longer needed.
-  private static final boolean ENABLE_SINK_PROXY = false;
+	// If true, instantate a SinkProxy for the stage's event queue
+	// when batchControllor or rtController are enabled. This should
+	// be obsolete; older implementations of these controllers relied
+	// on the proxy, but it's no longer needed.
+	private static final boolean ENABLE_SINK_PROXY = false;
 
-  /**
-   * Create a Stage with the given name, wrapper, and sink.
-   */
-  public Stage(String name, StageWrapperIF wrapper, SinkIF mainsink, ConfigDataIF config) {
-    this.name = name;
-    this.wrapper = wrapper;
+	/**
+	 * Create a Stage with the given name, wrapper, and sink.
+	 */
+	public Stage(String name, StageWrapperIF wrapper, SinkIF mainsink, ConfigDataIF config) {
+		this.name = name;
+		this.wrapper = wrapper;
 
-    SandstormConfig cf = config.getManager().getConfig();
-    this.mainsink = mainsink;
+		SandstormConfig cf = config.getManager().getConfig();
+		this.mainsink = mainsink;
 
-    if (ENABLE_SINK_PROXY && 
-	(cf.getBoolean("global.batchController.enable") || 
-	 cf.getBoolean("global.rtController.enable"))) {
-      this.mainsink = new SinkProxy((SinkIF)mainsink, config.getManager(), wrapper);
-    }
-  }
+		if (ENABLE_SINK_PROXY && (cf.getBoolean("global.batchController.enable") || cf.getBoolean("global.rtController.enable"))) {
+			this.mainsink = new SinkProxy((SinkIF) mainsink, config.getManager(), wrapper);
+		}
+	}
 
-  /**
-   * Create a Stage with the given name and wrapper, with no sink.
-   * This is used only for specialized stages.
-   */
-  public Stage(String name, StageWrapperIF wrapper) {
-    this.name = name;
-    this.wrapper = wrapper;
-  }
+	/**
+	 * Create a Stage with the given name and wrapper, with no sink. This is
+	 * used only for specialized stages.
+	 */
+	public Stage(String name, StageWrapperIF wrapper) {
+		this.name = name;
+		this.wrapper = wrapper;
+	}
 
-  /**
-   * Return the name of this stage.
-   */
-  public String getName() {
-    return name;
-  }
+	/**
+	 * Return the name of this stage.
+	 */
+	public String getName() {
+		return name;
+	}
 
-  /**
-   * Return the event sink.
-   */
-  public SinkIF getSink() {
-    return (SinkIF)mainsink;
-  }
+	/**
+	 * Return the event sink.
+	 */
+	public SinkIF getSink() {
+		return (SinkIF) mainsink;
+	}
 
-  /**
-   * Return the stage wrapper for this stage.
-   */
-  public StageWrapperIF getWrapper() {
-    return wrapper;
-  }
+	/**
+	 * Return the stage wrapper for this stage.
+	 */
+	public StageWrapperIF getWrapper() {
+		return wrapper;
+	}
 
-  /**
-   * Destroy this stage.
-   */
-  public void destroy() {
-    throw new IllegalArgumentException("XXX Not yet implemented!");
-  }
+	/**
+	 * Destroy this stage.
+	 */
+	public void destroy() {
+		throw new IllegalArgumentException("XXX Not yet implemented!");
+	}
 
 }
-

@@ -124,13 +124,15 @@ class aSocketThreadManager implements ThreadManagerIF, aSocketConst {
 				if (DEBUG)
 					System.err.println(name + ": Looping in run()");
 				try {
-
+					//!!!!是个整数，由吞吐量（队列长度）计算得到。代表了吞吐量。
 					aggTarget = tp.getAggregationTarget();
-
+					//!!!!在selsource没有Active时，运行eventQ的dequeue
+					//STEPIN 如何将select source和FiniteEvent产生关系，见handleEvents
 					while (selsource != null && selsource.numActive() == 0) {
 						if (DEBUG)
 							System.err.println(name + ": numActive is zero, waiting on event queue");
 						QueueElementIF qelarr[];
+						//!!!!默认就是-1
 						if (aggTarget == -1) {
 							qelarr = eventQ.blocking_dequeue_all(EVENT_QUEUE_TIMEOUT);
 						} else {
@@ -144,7 +146,7 @@ class aSocketThreadManager implements ThreadManagerIF, aSocketConst {
 							handler.handleEvents(qelarr);
 						}
 					}
-
+					//再运行selctsource的dequeue
 					for (int s = 0; s < SELECT_SPIN; s++) {
 						if (DEBUG)
 							System.err.println(name + ": doing select, numActive " + selsource.numActive());
@@ -160,6 +162,7 @@ class aSocketThreadManager implements ThreadManagerIF, aSocketConst {
 							if (DEBUG)
 								System.err.println(name + ": select got " + ret.length + " elements");
 							long tstart = System.currentTimeMillis();
+							//STEPIN 如果是读事件，会牵涉到SockState，这又是干嘛的？写事件呢？
 							handler.handleEvents(ret);
 							long tend = System.currentTimeMillis();
 							wrapper.getStats().recordServiceRate(ret.length, tend - tstart);
@@ -170,6 +173,7 @@ class aSocketThreadManager implements ThreadManagerIF, aSocketConst {
 
 					if (DEBUG)
 						System.err.println(name + ": Checking request queue");
+					//STEPIN 为什么还要来一遍eventQ
 					for (int s = 0; s < EVENT_QUEUE_SPIN; s++) {
 						QueueElementIF qelarr[];
 						if (aggTarget == -1) {

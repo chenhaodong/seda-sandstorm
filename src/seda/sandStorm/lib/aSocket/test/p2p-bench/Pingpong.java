@@ -32,247 +32,269 @@ import seda.sandStorm.api.*;
 import seda.sandStorm.core.*;
 import seda.sandStorm.main.*;
 import seda.sandStorm.lib.aSocket.*;
-import  java.net.*;
-import  java.io.*;
-import  java.util.*;
+import java.net.*;
+import java.io.*;
+import java.util.*;
 
 public class Pingpong {
-  
-  String peer;
-  boolean sending;
-  QueueIF comp_q = null;
-  SinkIF sink;
-  ATcpConnection conn;
-  ATcpClientSocket clisock;
-  ATcpServerSocket servsock;
 
-  private static final boolean DEBUG = false;
-  private static final boolean VERBOSE = true;
-  private static final boolean USE_NIO = true;
+	String peer;
+	boolean sending;
+	QueueIF comp_q = null;
+	SinkIF sink;
+	ATcpConnection conn;
+	ATcpClientSocket clisock;
+	ATcpServerSocket servsock;
 
-  // If true, do more careful measurements (for benchmarking)
-  private static final boolean BENCH = true;
+	private static final boolean DEBUG = false;
+	private static final boolean VERBOSE = true;
+	private static final boolean USE_NIO = true;
 
-  // Only valid if BENCH is true
-  private static final int NUM_MEASUREMENTS = 5;
-  private static final int NUM_MSGS_TO_SKIP = 100;
-  private static final int NUM_MSGS_PER_MEASUREMENT = 100;
-  private static long measurements[];
+	// If true, do more careful measurements (for benchmarking)
+	private static final boolean BENCH = true;
 
-  private static final int PORTNUM = 5957;
-  private static int MSG_SIZE;
+	// Only valid if BENCH is true
+	private static final int NUM_MEASUREMENTS = 5;
+	private static final int NUM_MSGS_TO_SKIP = 100;
+	private static final int NUM_MSGS_PER_MEASUREMENT = 100;
+	private static long measurements[];
 
-  public Pingpong(String peer, boolean sending) {
-    this.peer = peer;
-    this.sending = sending;
-  }
+	private static final int PORTNUM = 5957;
+	private static int MSG_SIZE;
 
-  public void setup() throws IOException, UnknownHostException {
-    boolean connected = false;
-    QueueElementIF fetched[];
-
-    if (BENCH) measurements = new long[NUM_MEASUREMENTS];
-    comp_q = new FiniteQueue();
-
-    if (sending) {
-      clisock = new ATcpClientSocket(peer, PORTNUM, comp_q);
-    } else {
-      servsock = new ATcpServerSocket(PORTNUM, comp_q);
-    }
-
-    while (!connected) {
-
-      /* Wait for connection */
-      if (DEBUG) System.err.println("Pinpong: Waiting for connection to complete");
-      while ((fetched = comp_q.blocking_dequeue_all(0)) == null) ;
-
-      if (fetched.length != 1) throw new IOException("Got more than one event on initial fetch?");
-
-      if (fetched[0] instanceof aSocketErrorEvent) {
-	if (!BENCH) {
-	  System.err.println("Still trying to connect: "+((aSocketErrorEvent)fetched[0]).toString());
+	public Pingpong(String peer, boolean sending) {
+		this.peer = peer;
+		this.sending = sending;
 	}
-	try {
-	  Thread.currentThread().sleep(100);
-	} catch (InterruptedException ie) {
-	  // Do nothing
-	}
-      } else if (fetched[0] instanceof ATcpListenSuccessEvent) {
-	// Ignore
-      } else {
-	conn = (ATcpConnection)fetched[0];
-	conn.startReader(comp_q);
-	sink = (SinkIF)conn;
-	connected = true;
-	if (DEBUG) System.err.println("Pinpong: finished connection");
-      }
-    }
 
-  }
+	public void setup() throws IOException, UnknownHostException {
+		boolean connected = false;
+		QueueElementIF fetched[];
 
-  public void doIt() throws SinkClosedException, IOException {
-    int i;
-    int n = 0;
+		if (BENCH)
+			measurements = new long[NUM_MEASUREMENTS];
+		comp_q = new FiniteQueue();
 
-    if (DEBUG) System.err.println("Pinpong: doIt called");
-
-    // Allocate buffer for message
-    byte barr[] = new byte[MSG_SIZE];
-    BufferElement buf = new BufferElement(barr);
-    // Fill in the buffer with some data
-    for (i = 0; i < MSG_SIZE; i++) {
-      barr[i] = (byte)(i & 0xff);
-    }
-    if (DEBUG) System.err.println("Pinpong: initialized packet");
-
-    QueueElementIF fetched[];
-    long before, after;
-
-    if (sending) {
-      if (DEBUG) System.err.println("Sender: Sending first message");
-      try {
-	// Enqueue the message
-  	sink.enqueue(buf);
-      } catch (SinkException se) {
-	System.err.println("Warning: Got SinkException on enqueue: "+se.getMessage());
-      }
-      if (DEBUG) System.err.println("Sender: sent first message");
-    }
-
-    int total_size = 0;
-    int m = 0;
-    
-    while (true) {
-      
-      // Block on incoming event queue waiting for events
-      if (DEBUG) System.err.println("\n\n\nPingpong: Waiting for dequeue...");
-      while ((fetched = comp_q.blocking_dequeue_all(0)) == null) ;
-
-      if (DEBUG) System.err.println("Pingpong: Got event: "+fetched);
-
-      for (i = 0; i < fetched.length; i++) {
-        if (fetched[i] instanceof aSocketErrorEvent) {
-          throw new IOException("Got error! "+((aSocketErrorEvent)fetched[i]).getMessage());
-        }
-
-	// Received a packet
-	if (fetched[i] instanceof ATcpInPacket) {
-
-          ATcpInPacket pkt = (ATcpInPacket)fetched[i];
-          int size = pkt.size();
-
-	  if (DEBUG) System.err.println("Got packet size="+size);
-
-          total_size += size;
-	  if (total_size == MSG_SIZE) {
-	    n++;
-
-	    // If performing timing measurements...
-	    if (BENCH && sending) {
-	      if (n == NUM_MSGS_TO_SKIP) {
-	        // Skip initial bursts of packets to warm up the pipeline
-	        measurements[0] = System.currentTimeMillis();
-		m = 1;
-	      } else {
-	        if (((n - NUM_MSGS_TO_SKIP) % NUM_MSGS_PER_MEASUREMENT) == 0) {
-		  measurements[m] = System.currentTimeMillis();
-		  m++;
-		  if (m == NUM_MEASUREMENTS) {
-		    printMeasurements();
-	            if (sending) System.exit(0);
-		  }
+		if (sending) {
+			clisock = new ATcpClientSocket(peer, PORTNUM, comp_q);
+		} else {
+			servsock = new ATcpServerSocket(PORTNUM, comp_q);
 		}
-	      }
-	    } 
 
-	    // After 500 messages print out the time
-	    if (!BENCH && (n % 500 == 0)) {
-	      after = System.currentTimeMillis();
-	      if (VERBOSE) printTime(before, after, 500, MSG_SIZE);
-	      before = after;
-	    }
+		while (!connected) {
 
-            // Send new message
-	    try {
-	      sink.enqueue(buf);
-	    } catch (SinkException se) {
-	      System.err.println("Warning: Got SinkException on enqueue: "+se);
-	    }
+			/* Wait for connection */
+			if (DEBUG)
+				System.err.println("Pinpong: Waiting for connection to complete");
+			while ((fetched = comp_q.blocking_dequeue_all(0)) == null)
+				;
 
-	    total_size = 0;
-	  }
+			if (fetched.length != 1)
+				throw new IOException("Got more than one event on initial fetch?");
 
-	} else if (fetched[i] instanceof SinkDrainedEvent) {
-	  if (DEBUG) System.err.println("Got SinkDrainedEvent!");
-	} else if (fetched[i] instanceof SinkClosedEvent) {
-	  System.err.println("Got SinkClosedEvent - quitting");
-	  return;
-	} else {
-	  throw new IOException("Sender got unknown comp_q event: "+fetched[i].toString());
+			if (fetched[0] instanceof aSocketErrorEvent) {
+				if (!BENCH) {
+					System.err.println("Still trying to connect: " + ((aSocketErrorEvent) fetched[0]).toString());
+				}
+				try {
+					Thread.currentThread().sleep(100);
+				} catch (InterruptedException ie) {
+					// Do nothing
+				}
+			} else if (fetched[0] instanceof ATcpListenSuccessEvent) {
+				// Ignore
+			} else {
+				conn = (ATcpConnection) fetched[0];
+				conn.startReader(comp_q);
+				sink = (SinkIF) conn;
+				connected = true;
+				if (DEBUG)
+					System.err.println("Pinpong: finished connection");
+			}
+		}
+
 	}
-      }
-    }
-  }
 
-  private static void printMeasurements() {
-    int m;
-    System.err.println("# size\t time(ms)\t rtt(usec)\t mbps");
-    for (m = 1; m < NUM_MEASUREMENTS; m++) {
-      long t1 = measurements[m-1];
-      long t2 = measurements[m];
-      long diff = t2-t1;
-      double iters_per_ms = (double) NUM_MSGS_PER_MEASUREMENT / (double) diff;
-      double iters_per_sec = iters_per_ms * 1000.0;
-      double rtt_usec = (diff * 1000.0)/((double)NUM_MSGS_PER_MEASUREMENT);
-      double mbps = (NUM_MSGS_PER_MEASUREMENT * MSG_SIZE * 8.0)/((double)diff * 1.0e3);
-      System.err.println(MSG_SIZE+"\t "+diff+"\t "+rtt_usec+"\t "+mbps);
-    }
-  }
+	public void doIt() throws SinkClosedException, IOException {
+		int i;
+		int n = 0;
 
-  private static void printTime(long t1, long t2, int numiters, int msg_size) {
-    long diff = t2-t1;
-    double iters_per_ms = (double) numiters / (double) diff;
-    double iters_per_sec = iters_per_ms * 1000.0;
-    double rtt_usec = (diff * 1000.0)/((double)numiters);
-    double mbps = (numiters * msg_size * 8.0)/((double)diff * 1.0e3);
+		if (DEBUG)
+			System.err.println("Pinpong: doIt called");
 
-    System.err.println( numiters + " iterations in " + diff +
-                        " milliseconds = " + iters_per_sec
-                        + " iterations per second" );
-    System.err.println("\t"+rtt_usec+" usec RTT, "+mbps+" mbps bandwidth");
-  }
+		// Allocate buffer for message
+		byte barr[] = new byte[MSG_SIZE];
+		BufferElement buf = new BufferElement(barr);
+		// Fill in the buffer with some data
+		for (i = 0; i < MSG_SIZE; i++) {
+			barr[i] = (byte) (i & 0xff);
+		}
+		if (DEBUG)
+			System.err.println("Pinpong: initialized packet");
 
-  private static void usage() {
-    System.err.println("usage: Pingpong [send|recv] <remote_hostname> <msgsize>");
-    System.exit(1);
-  }
+		QueueElementIF fetched[];
+		long before, after;
 
-  public static void main(String args[]) {
-    Pingpong np;
-    boolean sending = false;
+		if (sending) {
+			if (DEBUG)
+				System.err.println("Sender: Sending first message");
+			try {
+				// Enqueue the message
+				sink.enqueue(buf);
+			} catch (SinkException se) {
+				System.err.println("Warning: Got SinkException on enqueue: " + se.getMessage());
+			}
+			if (DEBUG)
+				System.err.println("Sender: sent first message");
+		}
 
-    if (args.length != 3) usage();
+		int total_size = 0;
+		int m = 0;
 
-    if (args[0].equals("send")) sending = true;
-    MSG_SIZE = Integer.decode(args[2]).intValue();
+		while (true) {
 
-    try {
-      SandstormConfig cfg = new SandstormConfig();
-      if (USE_NIO) cfg.putString("global.aSocket.provider", "NIO");
-      Sandstorm ss = new Sandstorm(cfg);
+			// Block on incoming event queue waiting for events
+			if (DEBUG)
+				System.err.println("\n\n\nPingpong: Waiting for dequeue...");
+			while ((fetched = comp_q.blocking_dequeue_all(0)) == null)
+				;
 
-      if (DEBUG) System.err.println("Pingpong: Creating pingpong object...");
-      np = new Pingpong(args[1], sending);
-      if (DEBUG) System.err.println("Pingpong: Calling setup...");
-      np.setup();
-      np.doIt();
-      System.exit(0);
+			if (DEBUG)
+				System.err.println("Pingpong: Got event: " + fetched);
 
-    } catch (Exception e) {
-      if (VERBOSE) System.err.println("Pingpong.main() got exception: "+e);
-      if (VERBOSE) e.printStackTrace();
-      System.exit(0);
-    }
-  }
+			for (i = 0; i < fetched.length; i++) {
+				if (fetched[i] instanceof aSocketErrorEvent) {
+					throw new IOException("Got error! " + ((aSocketErrorEvent) fetched[i]).getMessage());
+				}
+
+				// Received a packet
+				if (fetched[i] instanceof ATcpInPacket) {
+
+					ATcpInPacket pkt = (ATcpInPacket) fetched[i];
+					int size = pkt.size();
+
+					if (DEBUG)
+						System.err.println("Got packet size=" + size);
+
+					total_size += size;
+					if (total_size == MSG_SIZE) {
+						n++;
+
+						// If performing timing measurements...
+						if (BENCH && sending) {
+							if (n == NUM_MSGS_TO_SKIP) {
+								// Skip initial bursts of packets to warm up the
+								// pipeline
+								measurements[0] = System.currentTimeMillis();
+								m = 1;
+							} else {
+								if (((n - NUM_MSGS_TO_SKIP) % NUM_MSGS_PER_MEASUREMENT) == 0) {
+									measurements[m] = System.currentTimeMillis();
+									m++;
+									if (m == NUM_MEASUREMENTS) {
+										printMeasurements();
+										if (sending)
+											System.exit(0);
+									}
+								}
+							}
+						}
+
+						// After 500 messages print out the time
+						if (!BENCH && (n % 500 == 0)) {
+							after = System.currentTimeMillis();
+							if (VERBOSE)
+								printTime(before, after, 500, MSG_SIZE);
+							before = after;
+						}
+
+						// Send new message
+						try {
+							sink.enqueue(buf);
+						} catch (SinkException se) {
+							System.err.println("Warning: Got SinkException on enqueue: " + se);
+						}
+
+						total_size = 0;
+					}
+
+				} else if (fetched[i] instanceof SinkDrainedEvent) {
+					if (DEBUG)
+						System.err.println("Got SinkDrainedEvent!");
+				} else if (fetched[i] instanceof SinkClosedEvent) {
+					System.err.println("Got SinkClosedEvent - quitting");
+					return;
+				} else {
+					throw new IOException("Sender got unknown comp_q event: " + fetched[i].toString());
+				}
+			}
+		}
+	}
+
+	private static void printMeasurements() {
+		int m;
+		System.err.println("# size\t time(ms)\t rtt(usec)\t mbps");
+		for (m = 1; m < NUM_MEASUREMENTS; m++) {
+			long t1 = measurements[m - 1];
+			long t2 = measurements[m];
+			long diff = t2 - t1;
+			double iters_per_ms = (double) NUM_MSGS_PER_MEASUREMENT / (double) diff;
+			double iters_per_sec = iters_per_ms * 1000.0;
+			double rtt_usec = (diff * 1000.0) / ((double) NUM_MSGS_PER_MEASUREMENT);
+			double mbps = (NUM_MSGS_PER_MEASUREMENT * MSG_SIZE * 8.0) / ((double) diff * 1.0e3);
+			System.err.println(MSG_SIZE + "\t " + diff + "\t " + rtt_usec + "\t " + mbps);
+		}
+	}
+
+	private static void printTime(long t1, long t2, int numiters, int msg_size) {
+		long diff = t2 - t1;
+		double iters_per_ms = (double) numiters / (double) diff;
+		double iters_per_sec = iters_per_ms * 1000.0;
+		double rtt_usec = (diff * 1000.0) / ((double) numiters);
+		double mbps = (numiters * msg_size * 8.0) / ((double) diff * 1.0e3);
+
+		System.err.println(numiters + " iterations in " + diff + " milliseconds = " + iters_per_sec + " iterations per second");
+		System.err.println("\t" + rtt_usec + " usec RTT, " + mbps + " mbps bandwidth");
+	}
+
+	private static void usage() {
+		System.err.println("usage: Pingpong [send|recv] <remote_hostname> <msgsize>");
+		System.exit(1);
+	}
+
+	public static void main(String args[]) {
+		Pingpong np;
+		boolean sending = false;
+
+		if (args.length != 3)
+			usage();
+
+		if (args[0].equals("send"))
+			sending = true;
+		MSG_SIZE = Integer.decode(args[2]).intValue();
+
+		try {
+			SandstormConfig cfg = new SandstormConfig();
+			if (USE_NIO)
+				cfg.putString("global.aSocket.provider", "NIO");
+			Sandstorm ss = new Sandstorm(cfg);
+
+			if (DEBUG)
+				System.err.println("Pingpong: Creating pingpong object...");
+			np = new Pingpong(args[1], sending);
+			if (DEBUG)
+				System.err.println("Pingpong: Calling setup...");
+			np.setup();
+			np.doIt();
+			System.exit(0);
+
+		} catch (Exception e) {
+			if (VERBOSE)
+				System.err.println("Pingpong.main() got exception: " + e);
+			if (VERBOSE)
+				e.printStackTrace();
+			System.exit(0);
+		}
+	}
 
 }

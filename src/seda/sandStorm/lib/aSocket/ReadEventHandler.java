@@ -37,69 +37,73 @@ import java.util.*;
  */
 class ReadEventHandler extends aSocketEventHandler implements EventHandlerIF {
 
-  private static final boolean DEBUG = false;
+	private static final boolean DEBUG = false;
 
-  ReadEventHandler() {
-  }
-
-  public void init(ConfigDataIF config) {
-  }
-
-  public void destroy() {
-  }
-
-  private void processReadRequest(aSocketRequest req) throws IOException {
-
-    if (req instanceof ATcpStartReadRequest) {
-      ATcpStartReadRequest srreq = (ATcpStartReadRequest)req;
-      SockState ss = srreq.conn.sockState;
-      ss.readInit(selsource, srreq.compQ, srreq.readClogTries);
-
-    } else if (req instanceof AUdpStartReadRequest) {
-      AUdpStartReadRequest srreq = (AUdpStartReadRequest)req;
-      DatagramSockState ss = srreq.sock.sockState;
-      ss.readInit(selsource, srreq.compQ, srreq.readClogTries);
-
-    } else {
-      throw new IllegalArgumentException("Bad request type to enqueueRead");
-    }
-  }
-
-  public void handleEvent(QueueElementIF qel) {
-    if (DEBUG) System.err.println("ReadEventHandler: Got QEL: "+qel);
-
-    try {
-      if (qel instanceof SelectQueueElement) {
-        Object attach = ((SelectQueueElement)qel).getAttachment();
-	if (attach instanceof SockState) {
-	  SockState ss = (SockState)attach;
-	  if (DEBUG) System.err.println("ReadEventHandler: ss is "+ss);
-	  ss.doRead();
-	} else {
-	  DatagramSockState ss = (DatagramSockState)attach;
-	  if (DEBUG) System.err.println("ReadEventHandler: ss is "+ss);
-	  ss.doRead();
+	ReadEventHandler() {
 	}
-	if (DEBUG) System.err.println("ReadEventHandler: returned from doRead");
 
-      } else if (qel instanceof aSocketRequest) {
-	processReadRequest((aSocketRequest)qel);
+	public void init(ConfigDataIF config) {
+	}
 
-      } else {
-	throw new IllegalArgumentException("ReadEventHandler: Got unknown event type "+qel);
-      }
+	public void destroy() {
+	}
 
-    } catch (Exception e) {
-      System.err.println("ReadEventHandler: Got exception: "+e);
-      e.printStackTrace();
-    }
-  }
+	private void processReadRequest(aSocketRequest req) throws IOException {
 
-  public void handleEvents(QueueElementIF qelarr[]) {
-    for (int i = 0; i < qelarr.length; i++) {
-      handleEvent(qelarr[i]);
-    }
-  }
+		if (req instanceof ATcpStartReadRequest) {
+			ATcpStartReadRequest srreq = (ATcpStartReadRequest) req;
+			SockState ss = srreq.conn.sockState;
+			//在selectsource中注册selectitem，做读准备
+			ss.readInit(selsource, srreq.compQ, srreq.readClogTries);
+
+		} else if (req instanceof AUdpStartReadRequest) {
+			AUdpStartReadRequest srreq = (AUdpStartReadRequest) req;
+			DatagramSockState ss = srreq.sock.sockState;
+			ss.readInit(selsource, srreq.compQ, srreq.readClogTries);
+
+		} else {
+			throw new IllegalArgumentException("Bad request type to enqueueRead");
+		}
+	}
+
+	public void handleEvent(QueueElementIF qel) {
+		if (DEBUG)
+			System.err.println("ReadEventHandler: Got QEL: " + qel);
+
+		try {
+			if (qel instanceof SelectQueueElement) {
+				Object attach = ((SelectQueueElement) qel).getAttachment();
+				if (attach instanceof SockState) {
+					SockState ss = (SockState) attach;
+					if (DEBUG)
+						System.err.println("ReadEventHandler: ss is " + ss);
+					ss.doRead();
+				} else {
+					DatagramSockState ss = (DatagramSockState) attach;
+					if (DEBUG)
+						System.err.println("ReadEventHandler: ss is " + ss);
+					ss.doRead();
+				}
+				if (DEBUG)
+					System.err.println("ReadEventHandler: returned from doRead");
+
+			} else if (qel instanceof aSocketRequest) {
+				processReadRequest((aSocketRequest) qel);
+
+			} else {
+				throw new IllegalArgumentException("ReadEventHandler: Got unknown event type " + qel);
+			}
+
+		} catch (Exception e) {
+			System.err.println("ReadEventHandler: Got exception: " + e);
+			e.printStackTrace();
+		}
+	}
+
+	public void handleEvents(QueueElementIF qelarr[]) {
+		for (int i = 0; i < qelarr.length; i++) {
+			handleEvent(qelarr[i]);
+		}
+	}
 
 }
-
