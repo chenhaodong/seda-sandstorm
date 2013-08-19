@@ -91,10 +91,21 @@ class SockState extends seda.sandStorm.lib.aSocket.SockState {
 		this.read_selsource = (SelectSource) read_selsource;
 		this.readCompQ = compQ;
 		this.readClogTries = readClogTries;
+		//!!!!SelectItem和SockState的联系在此。
 		readsi = new SelectItem((NonblockingSocket) nbsock, this, Selectable.READ_READY);
 		this.read_selsource.register(readsi);
 	}
 
+	/**
+	 * 流程：判断sock是否已经关闭
+	 * 如果没有，将clogged_qel存有的写到enqueue中去（Sink会满，可能会有异常）
+	 * 完成clogged_qel清空后，开始从socket读取数据，写到readBuf中。
+	 * SelectItem.revents还不明白。
+	 * 将readBuf包装到ATcpInPacket也是一个QueueElementIF。
+	 * 放到readCompQ中
+	 *  (non-Javadoc)
+	 * @see seda.sandStorm.lib.aSocket.SockState#doRead()
+	 */
 	protected void doRead() {
 		if (DEBUG)
 			System.err.println("SockState: doRead called");
@@ -109,6 +120,7 @@ class SockState extends seda.sandStorm.lib.aSocket.SockState {
 			if (DEBUG)
 				System.err.println("SockState: doRead draining clogged element " + clogged_qel);
 			try {
+				//STEPIN readCompQ是SinkIF，干嘛用的?
 				readCompQ.enqueue(clogged_qel);
 				clogged_qel = null;
 				clogged_numtries = 0;
@@ -137,7 +149,7 @@ class SockState extends seda.sandStorm.lib.aSocket.SockState {
 			len = nbis.read(readBuf, 0, READ_BUFFER_SIZE);
 			if (DEBUG)
 				System.err.println("SockState: read returned " + len);
-
+			//如果没有读出字节来。
 			if (len == 0) {
 				// XXX MDW: Sometimes we get an error return result from
 				// poll() which causes an attempted read here, but no
@@ -145,6 +157,7 @@ class SockState extends seda.sandStorm.lib.aSocket.SockState {
 				// packet - on Linux it seems that certain TCP errors can
 				// trigger this.
 				// System.err.println("ss.doRead: Warning: Got empty read on socket");
+				//!!!! readsi是read selectitem。readinit方法中初始化。
 				readsi.revents = 0;
 				return;
 			} else if (len < 0) {
@@ -160,6 +173,7 @@ class SockState extends seda.sandStorm.lib.aSocket.SockState {
 			if (DEBUG)
 				System.err.println("ss.doRead: read got IOException: " + e.getMessage());
 			this.close(readCompQ);
+			//STEPIN revents干嘛用的？
 			readsi.revents = 0;
 			return;
 		}
@@ -236,7 +250,7 @@ class SockState extends seda.sandStorm.lib.aSocket.SockState {
 
 	protected void initWrite(ATcpWriteRequest req) {
 		this.cur_write_req = req;
-		this.writeBuf = req.buf.data;
+		this.writeBuf = SockStatereq.buf.data;
 		this.cur_offset = req.buf.offset;
 		this.cur_length_target = req.buf.size + cur_offset;
 	}
@@ -280,6 +294,7 @@ class SockState extends seda.sandStorm.lib.aSocket.SockState {
 
 	// XXX This is synchronized to avoid close() interfering with
 	// addWriteRequest
+	// 首先从selsource中注销，再将socket关闭
 	protected synchronized void close(SinkIF closeEventQueue) {
 		if (closed)
 			return;
@@ -310,6 +325,7 @@ class SockState extends seda.sandStorm.lib.aSocket.SockState {
 		}
 
 		if (closeEventQueue != null) {
+			//!!!!sock已经关闭了，添加conn以备下次再次连接
 			SinkClosedEvent sce = new SinkClosedEvent(conn);
 			closeEventQueue.enqueue_lossy(sce);
 		}

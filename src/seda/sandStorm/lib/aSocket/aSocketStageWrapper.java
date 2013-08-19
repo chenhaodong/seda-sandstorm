@@ -53,7 +53,7 @@ class aSocketStageWrapper implements StageWrapperIF {
 	 */
 	private FiniteQueue eventQ;
 	/**
-	 * 自己创建
+	 * 由eventhandler中的selectsource决定
 	 */
 	private SelectSourceIF selsource;
 	/**

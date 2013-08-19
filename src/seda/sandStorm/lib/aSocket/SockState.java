@@ -36,64 +36,72 @@ import java.util.*;
  */
 public abstract class SockState implements aSocketConst {
 
-  private static final boolean DEBUG = false;
+	private static final boolean DEBUG = false;
 
-  protected Socket nbsock;
-  protected ATcpConnection conn;
-  protected SinkIF readCompQ;
-  protected QueueElementIF clogged_qel;
-  protected int clogged_numtries;
-  protected int readClogTries, writeClogThreshold;
-  protected byte readBuf[];
-  protected boolean closed = false;
-  protected long seqNum = 1;
+	protected Socket nbsock;
+	protected ATcpConnection conn;
+	/**
+	 * read结束后，会将结果推入SinkIF中。
+	 */
+	protected SinkIF readCompQ;
+	/**
+	 * 可能是readCompQ溢出后的等待元素，为什么只有一个？不是集合或者列表。
+	 */
+	protected QueueElementIF clogged_qel;
+	protected int clogged_numtries;
+	protected int readClogTries, writeClogThreshold;
+	protected byte readBuf[];
+	protected boolean closed = false;
+	protected long seqNum = 1;
 
-  protected int outstanding_writes, numEmptyWrites;
-  protected ssLinkedList writeReqList;
-  protected ATcpWriteRequest cur_write_req;
-  protected int cur_offset, cur_length_target;
-  protected byte writeBuf[];
-  protected ATcpInPacket pkt;
+	protected int outstanding_writes, numEmptyWrites;
+	protected ssLinkedList writeReqList;
+	protected ATcpWriteRequest cur_write_req;
+	protected int cur_offset, cur_length_target;
+	protected byte writeBuf[];
+	protected ATcpInPacket pkt;
 
-  protected static int numActiveWriteSockets = 0;
+	protected static int numActiveWriteSockets = 0;
 
-  // This is synchronized with close() 
-  protected abstract void readInit(SelectSourceIF read_selsource, SinkIF compQ, int readClogTries);
-  protected abstract void doRead();
+	// This is synchronized with close()
+	protected abstract void readInit(SelectSourceIF read_selsource,
+			SinkIF compQ, int readClogTries);
 
-  // XXX This is synchronized with close() to avoid a race with close()
-  // removing the writeReqList while this method is being called.
-  // Probably a better way to do this...
-  protected abstract boolean addWriteRequest(aSocketRequest req, SelectSourceIF write_selsource);
+	protected abstract void doRead();
 
-  protected abstract void initWrite(ATcpWriteRequest req);
+	// XXX This is synchronized with close() to avoid a race with close()
+	// removing the writeReqList while this method is being called.
+	// Probably a better way to do this...
+	protected abstract boolean addWriteRequest(aSocketRequest req,
+			SelectSourceIF write_selsource);
 
-  protected abstract boolean tryWrite() throws SinkClosedException;
+	protected abstract void initWrite(ATcpWriteRequest req);
 
-  void writeReset() {
-    this.cur_write_req = null;
-    this.outstanding_writes--;
-  }
+	protected abstract boolean tryWrite() throws SinkClosedException;
 
-  protected abstract void writeMaskEnable();
+	void writeReset() {
+		this.cur_write_req = null;
+		this.outstanding_writes--;
+	}
 
-  protected abstract void writeMaskDisable();
+	protected abstract void writeMaskEnable();
 
-  static int numActiveWriters() {
-    return numActiveWriteSockets;
-  }
+	protected abstract void writeMaskDisable();
 
-  boolean isClosed() {
-    return closed;
-  }
+	static int numActiveWriters() {
+		return numActiveWriteSockets;
+	}
 
-  // XXX This is synchronized to avoid close() interfering with
-  // addWriteRequest
-  protected abstract void close(SinkIF closeEventQueue);
+	boolean isClosed() {
+		return closed;
+	}
 
-  public String toString() {
-    return "SockState ["+nbsock+"]";
-  }
+	// XXX This is synchronized to avoid close() interfering with
+	// addWriteRequest
+	protected abstract void close(SinkIF closeEventQueue);
+
+	public String toString() {
+		return "SockState [" + nbsock + "]";
+	}
 
 }
-

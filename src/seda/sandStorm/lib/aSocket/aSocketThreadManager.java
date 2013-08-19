@@ -146,7 +146,7 @@ class aSocketThreadManager implements ThreadManagerIF, aSocketConst {
 							handler.handleEvents(qelarr);
 						}
 					}
-					//再运行selctsource的dequeue
+					//!!!!再运行selctsource的dequeue
 					for (int s = 0; s < SELECT_SPIN; s++) {
 						if (DEBUG)
 							System.err.println(name + ": doing select, numActive " + selsource.numActive());

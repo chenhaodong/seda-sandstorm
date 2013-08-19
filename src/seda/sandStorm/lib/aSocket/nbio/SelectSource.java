@@ -386,6 +386,7 @@ public class SelectSource implements SelectSourceIF {
 	}
 
 	// Balances selarr[] by shuffling the entries - sets ready[]
+	// 把SelectItem都放到ready变量中
 	private void balance(SelectItem selarr[]) {
 		if (DEBUG)
 			System.err.println("SelectSource: balance called, selarr size=" + selarr.length);
