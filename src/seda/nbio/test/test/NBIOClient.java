@@ -22,7 +22,6 @@
  * 
  */
 
-
 /*
  * This is a simple test program demonstrating the NBIO library.
  * It creates a nonblocking socket and writes packets to it.
@@ -35,35 +34,35 @@ import java.io.*;
 
 public class NBIOClient {
 
-  public static void main(String args[]) {
-    if (args.length != 1) {
-      System.err.println("Usage: NBIOClient <hostname>\n");
-      System.exit(-1);
-    }
+	public static void main(String args[]) {
+		if (args.length != 1) {
+			System.err.println("Usage: NBIOClient <hostname>\n");
+			System.exit(-1);
+		}
 
-    try {
-      System.err.println("NBIOClient starting...");
-      NonblockingSocket s = new NonblockingSocket(args[0], 4046);
+		try {
+			System.err.println("NBIOClient starting...");
+			NonblockingSocket s = new NonblockingSocket(args[0], 4046);
 
-      NonblockingOutputStream os = (NonblockingOutputStream)s.getOutputStream();
-      String str = "Hello there server!";
-      byte barr[] = str.getBytes();
+			NonblockingOutputStream os = (NonblockingOutputStream) s.getOutputStream();
+			String str = "Hello there server!";
+			byte barr[] = str.getBytes();
 
-      while (true) {
-        int c = os.nbWrite(barr);
-	System.err.println("WROTE "+c+" bytes");
-	try {
-	  Thread.currentThread().sleep(1000);
-	} catch (InterruptedException ie) {
-        }
-      }
+			while (true) {
+				int c = os.nbWrite(barr);
+				System.err.println("WROTE " + c + " bytes");
+				try {
+					Thread.currentThread().sleep(1000);
+				} catch (InterruptedException ie) {
+				}
+			}
 
-    } catch (Exception e) {
-      System.err.println("NBIOClient: Caught exception: "+e);
-      e.printStackTrace();
-      System.exit(-1);
-    }
+		} catch (Exception e) {
+			System.err.println("NBIOClient: Caught exception: " + e);
+			e.printStackTrace();
+			System.exit(-1);
+		}
 
-  }
+	}
 
 }

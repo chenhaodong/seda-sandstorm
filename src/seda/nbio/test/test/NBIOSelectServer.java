@@ -34,58 +34,59 @@ import java.net.*;
 
 public class NBIOSelectServer {
 
-  public static final int SELECT_TIMEOUT = 10000;
+	public static final int SELECT_TIMEOUT = 10000;
 
-  public static void main(String args[]) {
+	public static void main(String args[]) {
 
-    try {
-      System.err.println("NBIO server starting...");
-      NonblockingServerSocket s = new NonblockingServerSocket(4046);
-      NonblockingSocket clisock = null;
+		try {
+			System.err.println("NBIO server starting...");
+			NonblockingServerSocket s = new NonblockingServerSocket(4046);
+			NonblockingSocket clisock = null;
 
-      SelectSet selset = new SelectSet();
-      SelectItem selitem = new SelectItem(s, Selectable.ACCEPT_READY);
-      selset.add(selitem);
-      
-      do {
-        System.err.println("Waiting for connection...");
-        selset.select(SELECT_TIMEOUT);
-        if ((selitem.revents & Selectable.ACCEPT_READY) != 0) {
-          clisock = s.nbAccept();
-          if (clisock == null) throw new IOException("Got ACCEPT_READY but no connection?");
-        }
-      } while (clisock == null);
+			SelectSet selset = new SelectSet();
+			SelectItem selitem = new SelectItem(s, Selectable.ACCEPT_READY);
+			selset.add(selitem);
 
-      selitem = new SelectItem(clisock, Selectable.READ_READY);
-      selset.add(selitem);
+			do {
+				System.err.println("Waiting for connection...");
+				selset.select(SELECT_TIMEOUT);
+				if ((selitem.revents & Selectable.ACCEPT_READY) != 0) {
+					clisock = s.nbAccept();
+					if (clisock == null)
+						throw new IOException("Got ACCEPT_READY but no connection?");
+				}
+			} while (clisock == null);
 
-      System.err.println("Got connection from "+clisock.getInetAddress().getHostName());
-      InputStream is = clisock.getInputStream();
-      byte barr[] = new byte[1024];
+			selitem = new SelectItem(clisock, Selectable.READ_READY);
+			selset.add(selitem);
 
-      while (true) {
-        System.err.println("Calling select...");
- 	int numevents = selset.select(SELECT_TIMEOUT);
-	System.err.println("Got "+numevents+" events after select");
-	System.err.println("revents is "+selitem.revents);
-        int c = is.read(barr,0,1024);
-        if (c == -1) {
-          System.err.println("READ ERROR");
-        } else if (c == 0) {
-	  // This should not happen!
-          System.err.println("READ NOTHING (should not happen)");
-        } else {
-          String str = new String(barr,0,c);
-          System.err.println("READ: "+str);
-        }
-      }
+			System.err.println("Got connection from " + clisock.getInetAddress().getHostName());
+			InputStream is = clisock.getInputStream();
+			byte barr[] = new byte[1024];
 
-    } catch (Exception e) {
-      System.err.println("NBIOTest: Caught exception: "+e);
-      e.printStackTrace();
-      System.exit(-1);
-    }
+			while (true) {
+				System.err.println("Calling select...");
+				int numevents = selset.select(SELECT_TIMEOUT);
+				System.err.println("Got " + numevents + " events after select");
+				System.err.println("revents is " + selitem.revents);
+				int c = is.read(barr, 0, 1024);
+				if (c == -1) {
+					System.err.println("READ ERROR");
+				} else if (c == 0) {
+					// This should not happen!
+					System.err.println("READ NOTHING (should not happen)");
+				} else {
+					String str = new String(barr, 0, c);
+					System.err.println("READ: " + str);
+				}
+			}
 
-  }
+		} catch (Exception e) {
+			System.err.println("NBIOTest: Caught exception: " + e);
+			e.printStackTrace();
+			System.exit(-1);
+		}
+
+	}
 
 }

@@ -22,148 +22,148 @@
  * 
  */
 
-
 import seda.sandStorm.api.*;
 import seda.sandStorm.core.*;
 import seda.sandStorm.lib.aSocket.*;
 import java.io.*;
 
 /**
- * This event handmler listens for connections on the TCP port PORT
- * and accepts packets of size TASK_SIZE. For each packet it delivers
- * a BufferElement to the next handler on the chain, specified by 
- * the "next_handler" argument. 
+ * This event handmler listens for connections on the TCP port PORT and accepts
+ * packets of size TASK_SIZE. For each packet it delivers a BufferElement to the
+ * next handler on the chain, specified by the "next_handler" argument.
  */
 public class TaskRecvWorker implements EventHandlerIF {
 
-  private static final boolean DEBUG = false;
+	private static final boolean DEBUG = false;
 
-  // Spin in a loop trying to push packets to the next worker
-  private static final boolean DISPATCH_SPIN = true;
+	// Spin in a loop trying to push packets to the next worker
+	private static final boolean DISPATCH_SPIN = true;
 
-  private SinkIF      mySink;
-  private SinkIF      nextWorker, completionWorker;
+	private SinkIF mySink;
+	private SinkIF nextWorker, completionWorker;
 
-  private ATcpConnection incomingConnection;
+	private ATcpConnection incomingConnection;
 
-  private ATcpServerSocket servsock;
-  private int PORT = 5002;
-  private int TASK_SIZE = 200;
-  private byte cur_task[];
-  private int cur_offset;
+	private ATcpServerSocket servsock;
+	private int PORT = 5002;
+	private int TASK_SIZE = 200;
+	private byte cur_task[];
+	private int cur_offset;
 
-  public TaskRecvWorker() {
-  }
+	public TaskRecvWorker() {
+	}
 
-  public void init(ConfigDataIF config) throws Exception {
-    this.mySink = config.getStage().getSink();
+	public void init(ConfigDataIF config) throws Exception {
+		this.mySink = config.getStage().getSink();
 
-    if (config.getString("port") != null) 
-      PORT = Integer.parseInt(config.getString("port"));
-    if (config.getString("task_size") != null) 
-      TASK_SIZE = Integer.parseInt(config.getString("task_size"));
+		if (config.getString("port") != null)
+			PORT = Integer.parseInt(config.getString("port"));
+		if (config.getString("task_size") != null)
+			TASK_SIZE = Integer.parseInt(config.getString("task_size"));
 
-    cur_task = new byte[TASK_SIZE];
-    cur_offset = 0;
+		cur_task = new byte[TASK_SIZE];
+		cur_offset = 0;
 
-    if (config.getString("next_handler") == null) {
-      System.err.println("Must specify next_handler!");
-      System.exit(-1);
-    }
-
-    nextWorker = config.getManager().getStage(config.getString("next_handler")).getSink();
-
-    if (config.getString("completion_handler") == null) {
-      System.err.println("Must specify completion_handler!");
-      System.exit(-1);
-    }
-
-    completionWorker = config.getManager().getStage(config.getString("completion_handler")).getSink();
-
-    try {
-      servsock = new ATcpServerSocket(PORT, mySink);
-    } catch (IOException e) {
-      System.err.println("Got exception creating server socket: "+e);
-      e.printStackTrace();
-      System.exit(-1);
-    }
-
-    System.err.println("task_size="+TASK_SIZE);
-  }
-
-  public void destroy() {
-  }
-
-  public synchronized void handleEvent(QueueElementIF item) {
-    if (DEBUG) System.err.println("GOT QEL: "+item);
-
-    if (item instanceof ATcpConnection) {
-      System.err.println("Got connection: "+item);
-      incomingConnection = (ATcpConnection)item;
-      incomingConnection.startReader(mySink);
-      completionWorker.enqueue_lossy(incomingConnection);
-
-    } else if (item instanceof ATcpInPacket) {
-      ATcpInPacket pkt = (ATcpInPacket)item;
-      byte in[] = pkt.getBytes();
-      int inlength = in.length;
-      int inoff = 0;
-      if (DEBUG) System.err.println("Received "+inlength+" bytes");
-
-      do {
-        int tocopy = Math.min(inlength-inoff, TASK_SIZE-cur_offset);
-        System.arraycopy(in, inoff, cur_task, cur_offset, tocopy);
-        cur_offset += tocopy;
-	inoff += tocopy;
-        if (cur_offset == TASK_SIZE) {
-          BufferElement task = new BufferElement(cur_task);
-	  if (DEBUG) System.err.println("Sending task of size "+cur_task.length);
-	  if (DISPATCH_SPIN) {
-	    boolean sent = false;
-	    while (!sent) {
-    	      try {
-                nextWorker.enqueue(task);
-	        sent = true;
-              } catch (SinkFullException sfe) {
-	        System.err.println("Got SFE: "+sfe);
-	      } catch (SinkException sce) {
-	        System.err.println("Got SE: "+sce);
-		try {
-		  incomingConnection.close(null);
-		} catch (SinkClosedException sce2) {
-		  // Ignore
+		if (config.getString("next_handler") == null) {
+			System.err.println("Must specify next_handler!");
+			System.exit(-1);
 		}
-	      }
-	    }
-	  } else {
-    	    try {
-              nextWorker.enqueue(task);
-            } catch (SinkFullException sfe) {
-	      System.err.println("Got SFE: "+sfe);
-	    } catch (SinkException sce) {
-	      System.err.println("Got SE: "+sce);
-      	      try {
-		incomingConnection.close(null);
-	      } catch (SinkClosedException sce2) {
-		// Ignore
-	      }
-	    }
-          }
-	  cur_task = new byte[TASK_SIZE];
-	  cur_offset = 0;
-        }
-      } while ((inlength - inoff) > 0);
 
-    } else {
-      System.err.println("Got unexpected event: "+item);
-    }
+		nextWorker = config.getManager().getStage(config.getString("next_handler")).getSink();
 
-  }
+		if (config.getString("completion_handler") == null) {
+			System.err.println("Must specify completion_handler!");
+			System.exit(-1);
+		}
 
-  public void handleEvents(QueueElementIF items[]) {
-    for(int i=0; i<items.length; i++)
-      handleEvent(items[i]);
-  }
+		completionWorker = config.getManager().getStage(config.getString("completion_handler")).getSink();
+
+		try {
+			servsock = new ATcpServerSocket(PORT, mySink);
+		} catch (IOException e) {
+			System.err.println("Got exception creating server socket: " + e);
+			e.printStackTrace();
+			System.exit(-1);
+		}
+
+		System.err.println("task_size=" + TASK_SIZE);
+	}
+
+	public void destroy() {
+	}
+
+	public synchronized void handleEvent(QueueElementIF item) {
+		if (DEBUG)
+			System.err.println("GOT QEL: " + item);
+
+		if (item instanceof ATcpConnection) {
+			System.err.println("Got connection: " + item);
+			incomingConnection = (ATcpConnection) item;
+			incomingConnection.startReader(mySink);
+			completionWorker.enqueue_lossy(incomingConnection);
+
+		} else if (item instanceof ATcpInPacket) {
+			ATcpInPacket pkt = (ATcpInPacket) item;
+			byte in[] = pkt.getBytes();
+			int inlength = in.length;
+			int inoff = 0;
+			if (DEBUG)
+				System.err.println("Received " + inlength + " bytes");
+
+			do {
+				int tocopy = Math.min(inlength - inoff, TASK_SIZE - cur_offset);
+				System.arraycopy(in, inoff, cur_task, cur_offset, tocopy);
+				cur_offset += tocopy;
+				inoff += tocopy;
+				if (cur_offset == TASK_SIZE) {
+					BufferElement task = new BufferElement(cur_task);
+					if (DEBUG)
+						System.err.println("Sending task of size " + cur_task.length);
+					if (DISPATCH_SPIN) {
+						boolean sent = false;
+						while (!sent) {
+							try {
+								nextWorker.enqueue(task);
+								sent = true;
+							} catch (SinkFullException sfe) {
+								System.err.println("Got SFE: " + sfe);
+							} catch (SinkException sce) {
+								System.err.println("Got SE: " + sce);
+								try {
+									incomingConnection.close(null);
+								} catch (SinkClosedException sce2) {
+									// Ignore
+								}
+							}
+						}
+					} else {
+						try {
+							nextWorker.enqueue(task);
+						} catch (SinkFullException sfe) {
+							System.err.println("Got SFE: " + sfe);
+						} catch (SinkException sce) {
+							System.err.println("Got SE: " + sce);
+							try {
+								incomingConnection.close(null);
+							} catch (SinkClosedException sce2) {
+								// Ignore
+							}
+						}
+					}
+					cur_task = new byte[TASK_SIZE];
+					cur_offset = 0;
+				}
+			} while ((inlength - inoff) > 0);
+
+		} else {
+			System.err.println("Got unexpected event: " + item);
+		}
+
+	}
+
+	public void handleEvents(QueueElementIF items[]) {
+		for (int i = 0; i < items.length; i++)
+			handleEvent(items[i]);
+	}
 
 }
-
